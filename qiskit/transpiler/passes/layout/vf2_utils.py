@@ -126,6 +126,7 @@ def score_layout(
     run_in_parallel=False,
     edge_list=None,
     bit_list=None,
+    target=None,
 ):
     """Score a layout given an average error map."""
     if layout_mapping:
@@ -137,9 +138,14 @@ def score_layout(
         bit_list = build_bit_list(im_graph, bit_map)
     if edge_list is None:
         edge_list = build_edge_list(im_graph)
-    return vf2_layout.score_layout(
-        bit_list, edge_list, avg_error_map, nlayout, strict_direction, run_in_parallel
-    )
+    if target is not None:
+        return vf2_layout.score_layout_target(
+            bit_list, edge_list, target, nlayout, strict_direction, run_in_parallel
+        )
+    else:
+        return vf2_layout.score_layout(
+            bit_list, edge_list, avg_error_map, nlayout, strict_direction, run_in_parallel
+        )
 
 
 def build_average_error_map(target, properties, coupling_map):

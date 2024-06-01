@@ -194,16 +194,29 @@ class VF2Layout(AnalysisPass):
             if self.avg_error_map is None:
                 chosen_layout = mapping_to_layout(layout_mapping)
                 break
-            layout_score = vf2_utils.score_layout(
-                self.avg_error_map,
-                layout_mapping,
-                im_graph_node_map,
-                reverse_im_graph_node_map,
-                im_graph,
-                self.strict_direction,
-                edge_list=scoring_edge_list,
-                bit_list=scoring_bit_list,
-            )
+            if self.target is None:
+                layout_score = vf2_utils.score_layout(
+                    self.avg_error_map,
+                    layout_mapping,
+                    im_graph_node_map,
+                    reverse_im_graph_node_map,
+                    im_graph,
+                    self.strict_direction,
+                    edge_list=scoring_edge_list,
+                    bit_list=scoring_bit_list,
+                )
+            else:
+                layout_score = vf2_utils.score_layout(
+                    None,
+                    layout_mapping,
+                    im_graph_node_map,
+                    reverse_im_graph_node_map,
+                    im_graph,
+                    self.strict_direction,
+                    edge_list=scoring_edge_list,
+                    bit_list=scoring_bit_list,
+                    target=self.target,
+                )
             # If the layout score is 0 we can't do any better and we'll just
             # waste time finding additional mappings that will at best match
             # the performance, so exit early in this case

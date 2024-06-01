@@ -10,13 +10,17 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use hashbrown::HashMap;
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use rayon::prelude::*;
+use smallvec::smallvec;
 
 use crate::error_map::ErrorMap;
+use crate::nlayout::PhysicalQubit;
 use crate::nlayout::{NLayout, VirtualQubit};
+use crate::target_transpiler::BaseTarget;
 
 const PARALLEL_THRESHOLD: usize = 50;
 
@@ -31,6 +35,68 @@ impl EdgeList {
     pub fn new(edge_list: Vec<([VirtualQubit; 2], i32)>) -> Self {
         EdgeList { edge_list }
     }
+}
+
+fn build_average_error_map_from_target(target: &BaseTarget) -> Option<ErrorMap> {
+    let num_qubits = target.num_qubits.unwrap_or_default();
+    let mut built = false;
+    let mut avg_map = ErrorMap {
+        error_map: HashMap::with_capacity(num_qubits),
+    };
+    for qargs in target.get_qargs().unwrap_or_default() {
+        let mut qarg_error = 0.0;
+        let mut count = 0;
+        if let Ok(operations) = target.op_names_for_qargs(qargs) {
+            for op in operations {
+                if let Some(Some(inst_prop)) = target[op].get(qargs) {
+                    if let Some(error) = inst_prop.error {
+                        count += 1;
+                        qarg_error += error;
+                    }
+                }
+            }
+            if count > 0 {
+                if let Some(qarg) = qargs {
+                    let mut qarg = qarg.to_owned();
+                    if qarg.len() == 1 {
+                        qarg = smallvec![qarg[0], qarg[0]];
+                    }
+                    let qarg: [PhysicalQubit; 2] = qarg[0..2].try_into().unwrap();
+                    avg_map.error_map.insert(qarg, qarg_error / (count as f64));
+                    built = true;
+                }
+            }
+        }
+    }
+    if built {
+        Some(avg_map)
+    } else {
+        None
+    }
+}
+
+/// Score a given circuit with a layout applied, use the target for the ErrorMap
+#[pyfunction]
+#[pyo3(
+    text_signature = "(bit_list, edge_list, error_matrix, layout, strict_direction, run_in_parallel, /)"
+)]
+pub fn score_layout_target(
+    bit_list: PyReadonlyArray1<i32>,
+    edge_list: &EdgeList,
+    target: &BaseTarget,
+    layout: &NLayout,
+    strict_direction: bool,
+    run_in_parallel: bool,
+) -> PyResult<f64> {
+    let error_map = build_average_error_map_from_target(target).unwrap();
+    score_layout(
+        bit_list,
+        edge_list,
+        &error_map,
+        layout,
+        strict_direction,
+        run_in_parallel,
+    )
 }
 
 /// Score a given circuit with a layout applied
@@ -109,6 +175,7 @@ pub fn score_layout(
 #[pymodule]
 pub fn vf2_layout(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(score_layout))?;
+    m.add_wrapped(wrap_pyfunction!(score_layout_target))?;
     m.add_class::<EdgeList>()?;
     Ok(())
 }
