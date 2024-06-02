@@ -17,7 +17,7 @@ mod instruction_properties;
 
 use std::ops::Index;
 
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use indexmap::{
     map::{Keys, Values},
     IndexMap, IndexSet,
@@ -32,7 +32,7 @@ use pyo3::{
 
 use smallvec::{smallvec, SmallVec};
 
-use crate::nlayout::PhysicalQubit;
+use crate::{error_map::ErrorMap, nlayout::PhysicalQubit};
 
 use errors::TargetKeyError;
 use instruction_properties::BaseInstructionProperties;
@@ -172,6 +172,7 @@ pub struct BaseTarget {
     qarg_gate_map: IndexMap<Option<Qargs>, Option<HashSet<String>>>,
     non_global_strict_basis: Option<Vec<String>>,
     non_global_basis: Option<Vec<String>>,
+    average_error_map: Option<ErrorMap>,
 }
 
 #[pymethods]
@@ -269,6 +270,7 @@ impl BaseTarget {
             qarg_gate_map: IndexMap::new(),
             non_global_basis: None,
             non_global_strict_basis: None,
+            average_error_map: None,
         })
     }
 
@@ -408,6 +410,7 @@ impl BaseTarget {
         self.gate_map.insert(name, qargs_val);
         self.non_global_basis = None;
         self.non_global_strict_basis = None;
+        self.average_error_map = None;
         Ok(())
     }
 
@@ -444,6 +447,7 @@ impl BaseTarget {
         self.gate_map
             .entry(instruction)
             .and_modify(|e| *e = prop_map);
+        self.average_error_map = None;
         Ok(())
     }
 
@@ -1064,6 +1068,50 @@ impl BaseTarget {
 
 // Rust native methods
 impl BaseTarget {
+    pub fn build_average_error_map(&mut self) -> Option<&ErrorMap> {
+        // let num_qubits = target.num_qubits.unwrap_or_default();
+        if self.average_error_map.is_some() {
+            return self.average_error_map.as_ref();
+        } else {
+            let mut built = false;
+            let qargs = self.get_qargs().unwrap_or(IndexSet::new());
+            let mut avg_map = ErrorMap {
+                error_map: HashMap::with_capacity(qargs.len()),
+            };
+            for qargs in qargs {
+                let mut qarg_error = 0.0;
+                let mut count: usize = 0;
+                if let Ok(operations) = self.op_names_for_qargs(qargs) {
+                    for op in operations {
+                        if let Some(Some(inst_prop)) = self[op].get(qargs) {
+                            if let Some(error) = inst_prop.error {
+                                count += 1;
+                                qarg_error += error;
+                            }
+                        }
+                    }
+                    if count > 0 {
+                        if let Some(qarg) = qargs {
+                            let mut qarg = qarg.to_owned();
+                            if qarg.len() == 1 {
+                                qarg = smallvec![qarg[0], qarg[0]];
+                            }
+                            let qarg: [PhysicalQubit; 2] = qarg[0..2].try_into().unwrap();
+                            avg_map.error_map.insert(qarg, qarg_error / (count as f64));
+                            built = true;
+                        }
+                    }
+                }
+            }
+            if built {
+                self.average_error_map = Some(avg_map);
+                self.average_error_map.as_ref()
+            } else {
+                None
+            }
+        }
+    }
+
     /// Gets all the operation names that use these qargs. Rust native equivalent of ``BaseTarget.operation_names_for_qargs()``
     pub fn op_names_for_qargs(
         &self,
@@ -1089,11 +1137,7 @@ impl BaseTarget {
         if let Some(Some(qarg_gate_map_arg)) = self.qarg_gate_map.get(qargs).as_ref() {
             res.extend(qarg_gate_map_arg);
         }
-        for name in self._gate_name_map.keys() {
-            if self.variable_class_operations.contains(name) {
-                res.insert(name);
-            }
-        }
+        res.extend(self.variable_class_operations.iter());
         if let Some(qargs) = qargs.as_ref() {
             if let Some(global_gates) = self.global_operations.get(&qargs.len()) {
                 res.extend(global_gates)

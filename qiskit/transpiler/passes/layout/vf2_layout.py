@@ -127,11 +127,12 @@ class VF2Layout(AnalysisPass):
         """run the layout method"""
         if self.coupling_map is None:
             raise TranspilerError("coupling_map or target must be specified.")
-        self.avg_error_map = self.property_set["vf2_avg_error_map"]
-        if self.avg_error_map is None:
-            self.avg_error_map = vf2_utils.build_average_error_map(
-                self.target, self.properties, self.coupling_map
-            )
+        if self.target is None:
+            self.avg_error_map = self.property_set["vf2_avg_error_map"]
+            if self.avg_error_map is None:
+                self.avg_error_map = vf2_utils.build_average_error_map(
+                    self.target, self.properties, self.coupling_map
+                )
 
         result = vf2_utils.build_interaction_graph(dag, self.strict_direction)
         if result is None:
