@@ -1117,6 +1117,7 @@ impl BaseTarget {
         if self.average_error_map.is_some() {
             return self.average_error_map.as_ref();
         } else {
+            let num_qubits = self.num_qubits.unwrap_or_default();
             let mut built = false;
             let qargs = self.get_qargs().unwrap_or(IndexSet::new());
             let mut avg_map = ErrorMap {
@@ -1142,6 +1143,46 @@ impl BaseTarget {
                             }
                             let qarg: [PhysicalQubit; 2] = qarg[0..2].try_into().unwrap();
                             avg_map.error_map.insert(qarg, qarg_error / (count as f64));
+                            built = true;
+                        }
+                    }
+                }
+            }
+            let mut coupling_graph = None;
+            if !built {
+                if self.coupling_graph.is_none() {
+                    coupling_graph = match self.build_coupling_map(None, false) {
+                        Ok(graph) => graph,
+                        Err(_) => None,
+                    };
+                }
+                if let Some(coupling_graph) = coupling_graph {
+                    let node_indices = coupling_graph.node_indices().collect_vec();
+                    for (qubit, node_index) in node_indices.iter().enumerate() {
+                        let neighbors_count = coupling_graph
+                            .neighbors_undirected(*node_index)
+                            .collect_vec();
+                        avg_map.error_map.insert(
+                            [
+                                PhysicalQubit::new(qubit as u32),
+                                PhysicalQubit::new(qubit as u32),
+                            ],
+                            (neighbors_count.len() as f64) / (num_qubits as f64),
+                        );
+                    }
+                    for edge in coupling_graph.edge_indices() {
+                        let get_edge = coupling_graph.edge_endpoints(edge);
+                        if let Some(get_edge) = get_edge {
+                            let get_edge: [PhysicalQubit; 2] = [
+                                PhysicalQubit::new(get_edge.0.index() as u32),
+                                PhysicalQubit::new(get_edge.1.index() as u32),
+                            ];
+                            avg_map.error_map.insert(
+                                get_edge,
+                                (avg_map.error_map[&[get_edge[0], get_edge[0]]]
+                                    + avg_map.error_map[&[get_edge[1], get_edge[1]]])
+                                    / 2_f64,
+                            );
                             built = true;
                         }
                     }
