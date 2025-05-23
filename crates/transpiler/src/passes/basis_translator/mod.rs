@@ -34,6 +34,7 @@ use qiskit_circuit::imports::DAG_TO_CIRCUIT;
 use qiskit_circuit::imports::PARAMETER_EXPRESSION;
 use qiskit_circuit::operations::Param;
 use qiskit_circuit::packed_instruction::PackedInstruction;
+use qiskit_circuit::PhysicalQubit;
 use qiskit_circuit::{
     circuit_data::CircuitData,
     dag_circuit::DAGCircuit,
@@ -47,7 +48,6 @@ use crate::target::Qargs;
 use crate::target::QargsRef;
 use crate::target::Target;
 use crate::TranspilerError;
-use qiskit_accelerate::nlayout::PhysicalQubit;
 
 type InstMap = IndexMap<GateIdentifier, BasisTransformOut, ahash::RandomState>;
 type ExtraInstructionMap<'a> = IndexMap<&'a PhysicalQargs, InstMap, ahash::RandomState>;
@@ -478,7 +478,7 @@ fn apply_translation(
     >,
 ) -> PyResult<(DAGCircuit, bool)> {
     let mut is_updated = false;
-    let out_dag = dag.copy_empty_like(py, "alike")?;
+    let out_dag = dag.copy_empty_like("alike")?;
     let mut out_dag_builder = out_dag.into_builder();
     for node in dag.topological_op_nodes()? {
         let node_obj = dag[node].unwrap_operation();
@@ -524,7 +524,6 @@ fn apply_translation(
             }
             if let Some(new_op) = new_op {
                 out_dag_builder.apply_operation_back(
-                    py,
                     new_op.operation,
                     node_qarg,
                     node_carg,
@@ -539,7 +538,6 @@ fn apply_translation(
                 )?;
             } else {
                 out_dag_builder.apply_operation_back(
-                    py,
                     node_obj.op.clone(),
                     node_qarg,
                     node_carg,
@@ -556,7 +554,6 @@ fn apply_translation(
             && qargs_with_non_global_operation[&node_qarg_as_physical].contains(node_obj.op.name())
         {
             out_dag_builder.apply_operation_back(
-                py,
                 node_obj.op.clone(),
                 node_qarg,
                 node_carg,
@@ -635,7 +632,6 @@ fn replace_node(
                 .map(|param| param.clone_ref(py))
                 .collect();
             dag.apply_operation_back(
-                py,
                 new_op,
                 &new_qubits,
                 &new_clbits,
@@ -739,7 +735,6 @@ fn replace_node(
                 }
             }
             dag.apply_operation_back(
-                py,
                 new_op,
                 &new_qubits,
                 &new_clbits,
