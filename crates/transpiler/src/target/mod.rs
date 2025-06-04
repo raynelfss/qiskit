@@ -378,7 +378,7 @@ impl Target {
     ///
     /// Args:
     ///     operation (str): The operation name to get qargs for
-    /// Returns
+    /// Returns:
     ///     list: The list of qargs the gate instance applies to.
     #[pyo3(name = "qargs_for_operation_name")]
     pub fn py_qargs_for_operation_name(&self, operation: &str) -> PyResult<Option<Vec<&Qargs>>> {
@@ -393,7 +393,7 @@ impl Target {
     /// Args:
     ///     instruction (str): The instruction name to get the
     ///         :class:`~qiskit.circuit.Instruction` instance for
-    /// Returns
+    /// Returns:
     ///     qiskit.circuit.Instruction: The Instruction instance corresponding to the
     ///     name. This also can also be the class for globally defined variable with
     ///     operations.
@@ -418,7 +418,7 @@ impl Target {
     ///         to it. For example, ``(0,)`` will return the set of all
     ///         instructions that apply to qubit 0. If set to ``None`` this will
     ///         return any globally defined operations in the target.
-    /// Returns
+    /// Returns:
     ///     list: The list of :class:`~qiskit.circuit.Instruction` instances
     ///     that apply to the specified qarg. This may also be a class if
     ///     a variable width operation is globally defined.
@@ -449,7 +449,7 @@ impl Target {
     ///         to it. For example, ``(0,)`` will return the set of all
     ///         instructions that apply to qubit 0. If set to ``None`` this will
     ///         return the names for any globally defined operations in the target.
-    /// Returns
+    /// Returns:
     ///     set: The set of operation names that apply to the specified ``qargs``.
     ///
     /// Raises:
@@ -516,7 +516,7 @@ impl Target {
     ///
     ///         will return ``True`` if an RXGate(pi/4) exists on qubit 0.
     ///
-    /// Returns
+    /// Returns:
     ///     bool: Returns ``True`` if the instruction is supported and ``False`` if it isn't.
     #[pyo3(
         name = "instruction_supported",
@@ -664,7 +664,7 @@ impl Target {
     ///         :attr:`~qiskit.transpiler.Target.instructions` attribute. For, example
     ///         if you want the properties from the third element in
     ///         :attr:`~qiskit.transpiler.Target.instructions` you would set this to be ``2``.
-    /// Returns
+    /// Returns:
     ///     InstructionProperties: The instruction properties for the specified instruction tuple
     pub fn instruction_properties(&self, index: usize) -> PyResult<Option<InstructionProperties>> {
         let mut index_counter = 0;
@@ -698,7 +698,7 @@ impl Target {
     ///         non-global, but if ``strict_direction`` is set ``True`` both
     ///         ``cx`` and ``ecr`` would be returned.
     ///
-    /// Returns
+    /// Returns:
     ///     List[str]: A list of operation names for operations that aren't global in this target
     #[pyo3(name = "get_non_global_operation_names", signature = (/, strict_direction=false,))]
     fn py_get_non_global_operation_names(
@@ -906,7 +906,7 @@ impl Target {
     ///
     /// * `description` - An optional string to describe the Target.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a defined description attribute.
     ///
@@ -937,7 +937,7 @@ impl Target {
     ///        noiseless simulator that doesn't have constraints on the
     ///        instructions so the transpiler knows how many qubits are
     ///        available.
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a defined number of qubits.
     ///
@@ -971,7 +971,7 @@ impl Target {
     ///        instructions so the transpiler knows how many qubits are
     ///        available.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// * `Ok`: (if the number of qubits was successfully set.) [Target]
     /// * `Err`: (if there was a specified [Target::qubit_properties] attribute and the
@@ -1010,7 +1010,7 @@ impl Target {
     ///
     /// * `dt` - The system time resolution of input signals in seconds.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a defined ``dt`` value.
     ///
@@ -1036,7 +1036,7 @@ impl Target {
     ///        resolution in units of ``dt``. A user-defined pulse gate should
     ///        have duration of a multiple of this granularity value.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a `granularity` value.
     ///
@@ -1061,7 +1061,7 @@ impl Target {
     ///        length in units of ``dt``. A user-defined pulse gate should be
     ///        longer than this length.
     ///  
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a defined ``min_length`` attribute.
     ///
@@ -1088,7 +1088,7 @@ impl Target {
     ///        should start at time which is a multiple of the alignment
     ///        value.
     ///  
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a defined ``pulse_alignment`` attribute.
     ///
@@ -1115,7 +1115,7 @@ impl Target {
     ///        instruction should start at time which is a multiple of the
     ///        alignment value.
     ///  
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a defined ``acquire_alignment`` attribute.
     ///
@@ -1143,7 +1143,7 @@ impl Target {
     ///        are defined for. If some qubits don't have properties available you
     ///        can set that entry to ``py.None()``.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a defined ``qubit_properties`` attribute.
     ///
@@ -1176,7 +1176,7 @@ impl Target {
     ///        are defined for. If some qubits don't have properties available you
     ///        can set that entry to ``py.None()``.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// * `Ok`: (if the`qubit_properties` were successfully set.) [Target]
     /// * `Err`: (if there was a specified [Target::num_qubits] attribute and the
@@ -1220,7 +1220,7 @@ impl Target {
     ///        measured together. This must be provided
     ///        as a nested list like ``[[0, 1], [2, 3, 4]]``.
     ///  
-    /// # Returns
+    /// # Returns:
     ///
     /// Initialized [Target] with a defined ``concurrent_measurements`` attribute.
     ///
@@ -1256,7 +1256,7 @@ impl Target {
     /// * `props_map`: The optional property mapping between [Qargs] and
     ///   [InstructionProperties]. If set to `None` the instruction is treated as a global ideal instruction.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// * `Ok`: if the instruction property is successfully added.
     /// * `Err`: (if the instruction already exists or any of the qargs do not match
@@ -1369,7 +1369,7 @@ impl Target {
     ///   that the instruction operated on.
     /// * `properties` - The properties to use for updating the specified instruction in the target.
     ///
-    /// # Returns
+    /// # Returns:
     ///
     /// * `Ok`: if the instruction property is successfully updated.
     /// * `Err`: (if neither the instruction name or qarg aren't found) [TargetError].
