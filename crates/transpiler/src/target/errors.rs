@@ -42,5 +42,5 @@ pub enum TargetError {
     /// An attempt to set the number of qubits or qubit properties
     /// without them matching.
     #[error["The value of num_qubits specified: {0} does not match the length of the input qubit_properties list: {1}"]]
-    NumQubitsMismatch(usize, usize),
+    NumQubitsMismatch(u32, usize),
 }
