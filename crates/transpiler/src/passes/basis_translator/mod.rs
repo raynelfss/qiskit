@@ -58,8 +58,8 @@ type PhysicalQargs = SmallVec<[PhysicalQubit; 2]>;
 #[allow(clippy::too_many_arguments)]
 #[pyfunction(name = "base_run", signature = (dag, equiv_lib, qargs_with_non_global_operation, min_qubits, target_basis=None, target=None, non_global_operations=None))]
 pub fn run_basis_translator(
-    py: Python,
-    dag: DAGCircuit,
+    py: Python<'_>,
+    dag: &DAGCircuit,
     equiv_lib: &mut EquivalenceLibrary,
     qargs_with_non_global_operation: HashMap<Qargs, HashSet<String>>,
     min_qubits: usize,
@@ -110,7 +110,8 @@ pub fn run_basis_translator(
             .map(|x| x.to_string())
             .collect();
         extract_basis_target(
-            &dag,
+            py,
+            dag,
             &mut source_basis,
             &mut qargs_local_source_basis,
             min_qubits,
@@ -121,7 +122,7 @@ pub fn run_basis_translator(
             .into_iter()
             .map(|x| x.to_string())
             .collect();
-        source_basis = extract_basis(&dag, min_qubits)?;
+        source_basis = extract_basis(py, dag, min_qubits)?;
         new_target_basis = target_basis.unwrap().into_iter().collect();
     }
     new_target_basis = new_target_basis
@@ -200,19 +201,20 @@ pub fn run_basis_translator(
         )));
     };
 
-    let instr_map: InstMap = compose_transforms(py, &basis_transforms, &source_basis, &dag)?;
+    let instr_map: InstMap = compose_transforms(py, &basis_transforms, &source_basis, dag)?;
     let extra_inst_map: ExtraInstructionMap = qarg_local_basis_transforms
         .iter()
         .map(|(qarg, transform)| -> PyResult<_> {
             Ok((
                 *qarg,
-                compose_transforms(py, transform, &qargs_local_source_basis[*qarg], &dag)?,
+                compose_transforms(py, transform, &qargs_local_source_basis[*qarg], dag)?,
             ))
         })
         .collect::<PyResult<_>>()?;
 
     let (out_dag, _) = apply_translation(
-        &dag,
+        py,
+        dag,
         &new_target_basis,
         &instr_map,
         &extra_inst_map,
