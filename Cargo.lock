@@ -1464,6 +1464,7 @@ dependencies = [
  "pyo3",
  "qiskit-circuit",
  "qiskit-quantum-info",
+ "qiskit-synthesis",
  "qiskit-transpiler",
  "smallvec",
  "thiserror 2.0.13",
