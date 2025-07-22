@@ -90,6 +90,19 @@ pub struct ParameterExpression {
     name_map: HashMap<String, Symbol>,
 }
 
+// This needs to be implemented manually, since PyO3 does not provide this conversion
+// for subclasses.
+impl<'py> IntoPyObject<'py> for &ParameterExpression {
+    type Target = ParameterExpression;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        let expr = self.clone();
+        Ok(Py::new(py, expr)?.into_bound(py))
+    }
+}
+
 impl Hash for ParameterExpression {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // The string representation of a tree is unique.
@@ -213,6 +226,14 @@ impl ParameterExpression {
         Self { expr, name_map }
     }
 
+    /// Initialize from an f64.
+    pub fn from_f64(value: f64) -> Self {
+        Self {
+            expr: SymbolExpr::Value(Value::Real(value)),
+            name_map: HashMap::new(),
+        }
+    }
+
     /// Load from a sequence of [OPReplay]s. Used in serialization.
     pub fn from_qpy(replay: &[OPReplay]) -> Result<Self, ParameterError> {
         // the stack contains the latest lhs and rhs values
@@ -273,6 +294,35 @@ impl ParameterExpression {
             .expect("Invalid QPY replay encountered during deserialization: empty OPReplay."))
     }
 
+    /// Cast this expression to a numeric value.
+    ///
+    /// Args:
+    ///     - strict: Determines how to deal with unbound symbols in an expression that would be
+    ///         numeric, such as ``0 * x``, which is 0 but has the unbound symbol ``x``. If
+    ///         ``strict=true`` an error is returned in this case, and with ``strict=false`` the
+    ///         value is returned (``0`` in the example).
+    pub fn try_numeric(&self, strict: bool) -> Result<Value, ParameterError> {
+        // Check if we have unbound symbols. Then we'll always say we are non-numeric,
+        // even if the expression is 0. (Example: (0 * x).numeric() fails.)
+        if strict && !self.name_map.is_empty() {
+            return Err(ParameterError::UnboundParameter);
+        }
+
+        match self.expr.eval(true) {
+            Some(v) => match v {
+                Value::Real(_) | Value::Int(_) => Ok(v),
+                Value::Complex(c) => {
+                    if (-symbol_expr::SYMEXPR_EPSILON..symbol_expr::SYMEXPR_EPSILON).contains(&c.im)
+                    {
+                        Ok(Value::Real(c.re))
+                    } else {
+                        Ok(v)
+                    }
+                }
+            },
+            None => Err(ParameterError::UnboundParameter),
+        }
+    }
     /// Add an expression; ``self + rhs``.
     pub fn add(&self, rhs: &ParameterExpression) -> Result<Self, ParameterError> {
         let name_map = self.merged_name_map(rhs)?;
