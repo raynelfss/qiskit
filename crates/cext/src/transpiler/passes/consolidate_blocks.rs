@@ -10,16 +10,10 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-
 use qiskit_circuit::{
-    circuit_data::CircuitData,
-    converters::dag_to_circuit,
-    dag_circuit::DAGCircuit,
+    circuit_data::CircuitData, converters::dag_to_circuit, dag_circuit::DAGCircuit,
 };
-use qiskit_transpiler::{
-    passes::run_consolidate_blocks,
-    target::Target,
-};
+use qiskit_transpiler::{passes::run_consolidate_blocks, target::Target};
 
 use crate::pointers::const_ptr_as_ref;
 
