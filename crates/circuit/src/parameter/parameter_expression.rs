@@ -196,7 +196,7 @@ impl ParameterExpression {
     ///   an error.
     pub fn try_to_value(&self, strict: bool) -> Result<Value, ParameterError> {
         if strict && !self.name_map.is_empty() {
-            let free_symbols = self.expr.parameters();
+            let free_symbols = self.expr.symbols();
             return Err(ParameterError::UnboundParameters(free_symbols));
         }
 
@@ -212,7 +212,7 @@ impl ParameterExpression {
                 Ok(value)
             }
             None => {
-                let free_symbols = self.expr.parameters();
+                let free_symbols = self.expr.symbols();
                 Err(ParameterError::UnboundParameters(free_symbols))
             }
         }
@@ -294,35 +294,10 @@ impl ParameterExpression {
             .expect("Invalid QPY replay encountered during deserialization: empty OPReplay."))
     }
 
-    /// Cast this expression to a numeric value.
-    ///
-    /// Args:
-    ///     - strict: Determines how to deal with unbound symbols in an expression that would be
-    ///         numeric, such as ``0 * x``, which is 0 but has the unbound symbol ``x``. If
-    ///         ``strict=true`` an error is returned in this case, and with ``strict=false`` the
-    ///         value is returned (``0`` in the example).
-    pub fn try_numeric(&self, strict: bool) -> Result<Value, ParameterError> {
-        // Check if we have unbound symbols. Then we'll always say we are non-numeric,
-        // even if the expression is 0. (Example: (0 * x).numeric() fails.)
-        if strict && !self.name_map.is_empty() {
-            return Err(ParameterError::UnboundParameter);
-        }
-
-        match self.expr.eval(true) {
-            Some(v) => match v {
-                Value::Real(_) | Value::Int(_) => Ok(v),
-                Value::Complex(c) => {
-                    if (-symbol_expr::SYMEXPR_EPSILON..symbol_expr::SYMEXPR_EPSILON).contains(&c.im)
-                    {
-                        Ok(Value::Real(c.re))
-                    } else {
-                        Ok(v)
-                    }
-                }
-            },
-            None => Err(ParameterError::UnboundParameter),
-        }
+    pub fn iter_symbols(&self) -> Box<dyn Iterator<Item = Symbol>> {
+        self.expr.iter_symbols()
     }
+
     /// Add an expression; ``self + rhs``.
     pub fn add(&self, rhs: &ParameterExpression) -> Result<Self, ParameterError> {
         let name_map = self.merged_name_map(rhs)?;
@@ -735,6 +710,18 @@ impl PyParameterExpression {
             ob.extract::<PyParameterExpression>()
         }
     }
+
+    pub fn coerce_into_py(&self, py: Python) -> PyResult<PyObject> {
+        if let Ok(symbol) = self.inner.try_to_symbol() {
+            if symbol.index.is_some() {
+                Ok(Py::new(py, PyParameterVectorElement::from_symbol(symbol))?.into_any())
+            } else {
+                Ok(Py::new(py, PyParameter::from_symbol(symbol))?.into_any())
+            }
+        } else {
+            self.into_py_any(py)
+        }
+    }
 }
 
 #[pymethods]
@@ -786,8 +773,8 @@ impl PyParameterExpression {
     ///
     /// Returns:
     ///     ``True`` is this expression corresponds to a symbol, ``False`` otherwise.
-    pub fn is_symbol(&self) -> PyResult<bool> {
-        Ok(matches!(self.inner.expr, SymbolExpr::Symbol(_)))
+    pub fn is_symbol(&self) -> bool {
+        matches!(self.inner.expr, SymbolExpr::Symbol(_))
     }
 
     /// Cast this expression to a numeric value.
@@ -1346,7 +1333,7 @@ impl<'py> IntoPyObject<'py> for PyParameter {
 
 impl PyParameter {
     /// Get a Python class initialization from a symbol.
-    fn from_symbol(symbol: Symbol) -> PyClassInitializer<Self> {
+    pub fn from_symbol(symbol: Symbol) -> PyClassInitializer<Self> {
         let expr = SymbolExpr::Symbol(symbol.clone());
 
         let py_parameter = Self { symbol };
@@ -1554,7 +1541,7 @@ impl<'py> IntoPyObject<'py> for PyParameterVectorElement {
 }
 
 impl PyParameterVectorElement {
-    fn from_symbol(symbol: Symbol) -> PyClassInitializer<Self> {
+    pub fn from_symbol(symbol: Symbol) -> PyClassInitializer<Self> {
         let py_element = Self {
             symbol: symbol.clone(),
         };
@@ -1895,7 +1882,7 @@ fn filter_name_map(
     sub_expr: &SymbolExpr,
     name_map: &HashMap<String, Symbol>,
 ) -> ParameterExpression {
-    let sub_symbols = sub_expr.parameters();
+    let sub_symbols = sub_expr.symbols();
     let restricted_name_map: HashMap<String, Symbol> = name_map
         .iter()
         .filter(|(_, symbol)| sub_symbols.contains(*symbol))
