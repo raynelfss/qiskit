@@ -518,4 +518,34 @@ mod test {
 
         assert!(run_consolidate_blocks(&mut circ_as_dag, 1.0, true, None).is_ok())
     }
+
+    #[test]
+    fn test_consolidate_blocks_wire_order() {
+        let mut circuit: CircuitData = CircuitData::with_capacity(2, 0, 3, 0.0.into()).unwrap();
+        circuit.push_standard_gate(StandardGate::CX, &[], &[Qubit(0), Qubit(1)]);
+
+        let mut circ_as_dag: DAGCircuit =
+            DAGCircuit::from_circuit_data(&circuit, true, None, None, None, None).unwrap();
+
+        assert!(run_consolidate_blocks(&mut circ_as_dag, 1.0, true, None).is_ok())
+    }
+
+    #[test]
+    fn test_consolidate_blocks_3q_blocks() {
+        let mut circuit: CircuitData = CircuitData::with_capacity(3, 0, 3, 0.0.into()).unwrap();
+
+        circuit.push_standard_gate(StandardGate::Phase, &[0.5.into()], &[Qubit(0)]);
+        circuit.push_standard_gate(
+            StandardGate::U,
+            &[FRAC_PI_2.into(), 0.2.into(), 0.6.into()],
+            &[Qubit(0)],
+        );
+        circuit.push_standard_gate(StandardGate::CX, &[], &[Qubit(0), Qubit(1)]);
+        circuit.push_standard_gate(StandardGate::CX, &[], &[Qubit(2), Qubit(1)]);
+
+        let mut circ_as_dag: DAGCircuit =
+            DAGCircuit::from_circuit_data(&circuit, true, None, None, None, None).unwrap();
+
+        assert!(run_consolidate_blocks(&mut circ_as_dag, 1.0, true, None).is_ok())
+    }
 }
