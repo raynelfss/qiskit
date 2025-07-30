@@ -490,3 +490,32 @@ pub fn consolidate_blocks_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_consolidate_blocks))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use qiskit_circuit::circuit_data::CircuitData;
+    use qiskit_circuit::dag_circuit::DAGCircuit;
+    use qiskit_circuit::operations::StandardGate;
+    use qiskit_circuit::Qubit;
+    use std::f64::consts::FRAC_PI_2;
+
+    use super::run_consolidate_blocks;
+
+    #[test]
+    fn test_consolidate_blocks_rust_native() {
+        let mut circuit: CircuitData = CircuitData::with_capacity(2, 0, 3, 0.0.into()).unwrap();
+
+        circuit.push_standard_gate(StandardGate::Phase, &[0.5.into()], &[Qubit(0)]);
+        circuit.push_standard_gate(
+            StandardGate::U,
+            &[FRAC_PI_2.into(), 0.2.into(), 0.6.into()],
+            &[Qubit(0)],
+        );
+        circuit.push_standard_gate(StandardGate::CX, &[], &[Qubit(0), Qubit(1)]);
+
+        let mut circ_as_dag: DAGCircuit =
+            DAGCircuit::from_circuit_data(&circuit, true, None, None, None, None).unwrap();
+
+        assert!(run_consolidate_blocks(&mut circ_as_dag, 1.0, true, None).is_ok())
+    }
+}
