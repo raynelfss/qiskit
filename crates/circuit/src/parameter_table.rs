@@ -253,7 +253,7 @@ impl ParameterTable {
     }
 
     /// Get the (maybe cached) Python list of the sorted `Parameter` objects.
-    pub fn parameters<'a>(&'a self) -> &'a [Symbol] {
+    pub fn parameters(&self) -> &[Symbol] {
         self.parameters_cache.get_or_init(|| {
             self.order_cache
                 .get_or_init(|| self.sorted_order())
@@ -264,7 +264,7 @@ impl ParameterTable {
     }
 
     /// Get a Python set of all tracked `Parameter` objects.
-    pub fn parameters_unsorted<'py>(&self) -> HashSet<&Symbol> {
+    pub fn parameters_unsorted(&self) -> HashSet<&Symbol> {
         HashSet::from_iter(self.by_uuid.values().map(|info| &info.object))
     }
 
