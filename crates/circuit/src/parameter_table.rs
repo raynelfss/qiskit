@@ -23,7 +23,6 @@ use pyo3::{import_exception, intern};
 
 use crate::imports::UUID;
 use crate::parameter::parameter_expression::{PyParameter, PyParameterExpression};
-use crate::parameter::symbol_expr::Symbol;
 
 import_exception!(qiskit.circuit, CircuitError);
 
@@ -95,10 +94,6 @@ impl ParameterUuid {
         };
 
         Ok(Self(uuid))
-    }
-
-    pub fn from_symbol(symbol: &Symbol) -> Self {
-        Self(symbol.uuid.as_u128())
     }
 }
 

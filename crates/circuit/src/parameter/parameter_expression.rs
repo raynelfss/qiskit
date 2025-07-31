@@ -14,7 +14,7 @@ use hashbrown::hash_map::Entry;
 use hashbrown::{HashMap, HashSet};
 use num_complex::Complex64;
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError, PyZeroDivisionError};
-use pyo3::types::{IntoPyDict, PyComplex, PyFloat, PyInt, PyNotImplemented, PySet, PyString};
+use pyo3::types::{IntoPyDict, PyNotImplemented, PySet, PyString};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -196,7 +196,7 @@ impl ParameterExpression {
     ///   an error.
     pub fn try_to_value(&self, strict: bool) -> Result<Value, ParameterError> {
         if strict && !self.name_map.is_empty() {
-            let free_symbols = self.expr.symbols();
+            let free_symbols = self.expr.parameters();
             return Err(ParameterError::UnboundParameters(free_symbols));
         }
 
@@ -212,7 +212,7 @@ impl ParameterExpression {
                 Ok(value)
             }
             None => {
-                let free_symbols = self.expr.symbols();
+                let free_symbols = self.expr.parameters();
                 Err(ParameterError::UnboundParameters(free_symbols))
             }
         }
@@ -224,14 +224,6 @@ impl ParameterExpression {
     pub fn from_symbol_expr(expr: SymbolExpr) -> Self {
         let name_map = expr.name_map();
         Self { expr, name_map }
-    }
-
-    /// Initialize from an f64.
-    pub fn from_f64(value: f64) -> Self {
-        Self {
-            expr: SymbolExpr::Value(Value::Real(value)),
-            name_map: HashMap::new(),
-        }
     }
 
     /// Load from a sequence of [OPReplay]s. Used in serialization.
@@ -292,15 +284,6 @@ impl ParameterExpression {
         Ok(stack
             .pop()
             .expect("Invalid QPY replay encountered during deserialization: empty OPReplay."))
-    }
-
-    pub fn iter_symbols(&self) -> impl Iterator<Item = Symbol> + '_ {
-        self.name_map.values().cloned()
-    }
-
-    /// Whether the expression represents a complex number. None if cannot be determined.
-    pub fn is_complex(&self) -> Option<bool> {
-        self.expr.is_complex()
     }
 
     /// Add an expression; ``self + rhs``.
@@ -694,43 +677,25 @@ impl PyParameterExpression {
     ///
     /// * `Ok(Self)` - The extracted expression.
     /// * `Err(PyResult)` - An error if extraction to all above types failed.
-    pub fn extract_coerce(ob: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn extract_coerce(ob: &Bound<'_, PyAny>) -> PyResult<Self> {
         if let Ok(i) = ob.extract::<i64>() {
             Ok(ParameterExpression::new(SymbolExpr::Value(Value::from(i)), HashMap::new()).into())
-        } else if let Ok(r) = ob.extract::<f64>() {
-            if r.is_infinite() || r.is_nan() {
-                return Err(ParameterError::InvalidValue.into());
-            }
-            Ok(ParameterExpression::new(SymbolExpr::Value(Value::from(r)), HashMap::new()).into())
         } else if let Ok(c) = ob.extract::<Complex64>() {
             if c.is_infinite() || c.is_nan() {
                 return Err(ParameterError::InvalidValue.into());
             }
             Ok(ParameterExpression::new(SymbolExpr::Value(Value::from(c)), HashMap::new()).into())
+        } else if let Ok(r) = ob.extract::<f64>() {
+            if r.is_infinite() || r.is_nan() {
+                return Err(ParameterError::InvalidValue.into());
+            }
+            Ok(ParameterExpression::new(SymbolExpr::Value(Value::from(r)), HashMap::new()).into())
         } else if let Ok(element) = ob.extract::<PyParameterVectorElement>() {
             Ok(ParameterExpression::from_symbol(element.symbol.clone()).into())
         } else if let Ok(parameter) = ob.extract::<PyParameter>() {
             Ok(ParameterExpression::from_symbol(parameter.symbol.clone()).into())
         } else {
             ob.extract::<PyParameterExpression>()
-        }
-    }
-
-    pub fn coerce_into_py(&self, py: Python) -> PyResult<PyObject> {
-        if let Ok(value) = self.inner.try_to_value(true) {
-            match value {
-                Value::Int(i) => Ok(PyInt::new(py, i).unbind().into_any()),
-                Value::Real(r) => Ok(PyFloat::new(py, r).unbind().into_any()),
-                Value::Complex(c) => Ok(PyComplex::from_complex_bound(py, c).unbind().into_any()),
-            }
-        } else if let Ok(symbol) = self.inner.try_to_symbol() {
-            if symbol.index.is_some() {
-                Ok(Py::new(py, PyParameterVectorElement::from_symbol(symbol))?.into_any())
-            } else {
-                Ok(Py::new(py, PyParameter::from_symbol(symbol))?.into_any())
-            }
-        } else {
-            self.into_py_any(py)
         }
     }
 }
@@ -784,8 +749,8 @@ impl PyParameterExpression {
     ///
     /// Returns:
     ///     ``True`` is this expression corresponds to a symbol, ``False`` otherwise.
-    pub fn is_symbol(&self) -> bool {
-        matches!(self.inner.expr, SymbolExpr::Symbol(_))
+    pub fn is_symbol(&self) -> PyResult<bool> {
+        Ok(matches!(self.inner.expr, SymbolExpr::Symbol(_)))
     }
 
     /// Cast this expression to a numeric value.
@@ -1344,17 +1309,13 @@ impl<'py> IntoPyObject<'py> for PyParameter {
 
 impl PyParameter {
     /// Get a Python class initialization from a symbol.
-    pub fn from_symbol(symbol: Symbol) -> PyClassInitializer<Self> {
+    fn from_symbol(symbol: Symbol) -> PyClassInitializer<Self> {
         let expr = SymbolExpr::Symbol(symbol.clone());
 
         let py_parameter = Self { symbol };
         let py_expr: PyParameterExpression = ParameterExpression::from_symbol_expr(expr).into();
 
         PyClassInitializer::from(py_expr).add_subclass(py_parameter)
-    }
-
-    pub fn symbol(&self) -> Symbol {
-        self.symbol.clone()
     }
 
     /// Get a reference to the underlying symbol.
@@ -1556,11 +1517,7 @@ impl<'py> IntoPyObject<'py> for PyParameterVectorElement {
 }
 
 impl PyParameterVectorElement {
-    pub fn symbol(&self) -> Symbol {
-        self.symbol.clone()
-    }
-
-    pub fn from_symbol(symbol: Symbol) -> PyClassInitializer<Self> {
+    fn from_symbol(symbol: Symbol) -> PyClassInitializer<Self> {
         let py_element = Self {
             symbol: symbol.clone(),
         };
@@ -1901,7 +1858,7 @@ fn filter_name_map(
     sub_expr: &SymbolExpr,
     name_map: &HashMap<String, Symbol>,
 ) -> ParameterExpression {
-    let sub_symbols = sub_expr.symbols();
+    let sub_symbols = sub_expr.parameters();
     let restricted_name_map: HashMap<String, Symbol> = name_map
         .iter()
         .filter(|(_, symbol)| sub_symbols.contains(*symbol))
