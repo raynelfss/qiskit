@@ -23,6 +23,7 @@ use pyo3::{import_exception, intern};
 
 use crate::imports::UUID;
 use crate::parameter::parameter_expression::{PyParameter, PyParameterExpression};
+use crate::parameter::symbol_expr::Symbol;
 
 import_exception!(qiskit.circuit, CircuitError);
 
@@ -81,6 +82,7 @@ impl ParameterUuid {
     /// to be a parameter.
     pub fn from_parameter(ob: &Bound<PyAny>) -> PyResult<Self> {
         let uuid = if let Ok(param) = ob.downcast::<PyParameter>() {
+            // this downcast should cover both PyParameterVectorElement and PyParameter
             param.borrow().symbol_ref().uuid.as_u128()
         } else if let Ok(expr) = ob.downcast::<PyParameterExpression>() {
             let expr_borrowed = expr.borrow();
@@ -89,11 +91,15 @@ impl ParameterUuid {
             symbol.uuid.as_u128()
         } else {
             return Err(PyTypeError::new_err(
-                "Could not downcast to Parameter or Expression",
+                "Could not downcast to Parameter or Expression (that equals a symbol)",
             ));
         };
 
         Ok(Self(uuid))
+    }
+
+    pub fn from_symbol(symbol: &Symbol) -> Self {
+        Self(symbol.uuid.as_u128())
     }
 }
 
