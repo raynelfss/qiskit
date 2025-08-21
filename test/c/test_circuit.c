@@ -31,7 +31,7 @@ int test_empty(void) {
     QkOpCounts counts = qk_circuit_count_ops(qc);
     int opcount = counts.len;
 
-    qk_opcounts_clear(counts);
+    qk_opcounts_clear(&counts);
     qk_circuit_free(qc);
 
     if (opcount != 0) {
@@ -263,6 +263,40 @@ int test_gate_num_params(void) {
     return Ok;
 }
 
+/**
+ * Test edge cases for getting the op counts.
+ */
+int test_get_gate_counts(void) {
+    QkCircuit *qc = qk_circuit_new(3, 3);
+
+    // test empty circuit
+    int result = Ok;
+    QkOpCounts c1 = qk_circuit_count_ops(qc);
+    if (c1.len != 0) {
+        result = EqualityError;
+    }
+    qk_opcounts_clear(&c1);
+
+    // add some instructions
+    uint32_t qubits[2] = {1, 0};
+    double params[1] = {0.12};
+    qk_circuit_gate(qc, QkGate_CRX, qubits, params);
+    QkOpCounts c2 = qk_circuit_count_ops(qc);
+
+    if (c2.len != 1) {
+        result = EqualityError;
+    }
+    qk_opcounts_clear(&c2);
+
+    // check that after clearing, the object is still valid
+    if (c2.len != 0 || c2.data != NULL) {
+        result = EqualityError;
+    }
+
+    qk_circuit_free(qc);
+    return result;
+}
+
 int test_get_gate_counts_bv_no_measure(void) {
     QkCircuit *qc = qk_circuit_new(1000, 1000);
     double *params = NULL;
@@ -313,7 +347,7 @@ int test_get_gate_counts_bv_no_measure(void) {
     }
 cleanup:
     qk_circuit_free(qc);
-    qk_opcounts_clear(op_counts);
+    qk_opcounts_clear(&op_counts);
     return result;
 }
 
@@ -378,7 +412,7 @@ int test_get_gate_counts_bv_measures(void) {
     }
 cleanup:
     qk_circuit_free(qc);
-    qk_opcounts_clear(op_counts);
+    qk_opcounts_clear(&op_counts);
     return result;
 }
 
@@ -457,7 +491,7 @@ int test_get_gate_counts_bv_barrier_and_measures(void) {
     }
 cleanup:
     qk_circuit_free(qc);
-    qk_opcounts_clear(op_counts);
+    qk_opcounts_clear(&op_counts);
     return result;
 }
 
@@ -679,7 +713,7 @@ int test_get_gate_counts_bv_resets_barrier_and_measures(void) {
     }
 cleanup:
     qk_circuit_free(qc);
-    qk_opcounts_clear(op_counts);
+    qk_opcounts_clear(&op_counts);
     return result;
 }
 
@@ -715,10 +749,10 @@ int test_unitary_gate(void) {
     if (op_counts.len != 1 || strcmp(op_counts.data[0].name, "unitary") != 0 ||
         op_counts.data[0].count != 1) {
         result = EqualityError;
-        qk_opcounts_clear(op_counts);
+        qk_opcounts_clear(&op_counts);
         goto cleanup;
     }
-    qk_opcounts_clear(op_counts);
+    qk_opcounts_clear(&op_counts);
 
     QkCircuitInstruction inst;
     qk_circuit_get_instruction(qc, 0, &inst);
@@ -763,10 +797,10 @@ int test_unitary_gate_1q(void) {
     if (op_counts.len != 1 || strcmp(op_counts.data[0].name, "unitary") != 0 ||
         op_counts.data[0].count != 1) {
         result = EqualityError;
-        qk_opcounts_clear(op_counts);
+        qk_opcounts_clear(&op_counts);
         goto cleanup;
     }
-    qk_opcounts_clear(op_counts);
+    qk_opcounts_clear(&op_counts);
 
     QkCircuitInstruction inst;
     qk_circuit_get_instruction(qc, 0, &inst);
@@ -817,10 +851,10 @@ int test_unitary_gate_3q(void) {
     if (op_counts.len != 1 || strcmp(op_counts.data[0].name, "unitary") != 0 ||
         op_counts.data[0].count != 1) {
         result = EqualityError;
-        qk_opcounts_clear(op_counts);
+        qk_opcounts_clear(&op_counts);
         goto cleanup;
     }
-    qk_opcounts_clear(op_counts);
+    qk_opcounts_clear(&op_counts);
     QkCircuitInstruction inst;
     qk_circuit_get_instruction(qc, 0, &inst);
     if (strcmp(inst.name, "unitary") != 0 || inst.num_clbits != 0 || inst.num_params != 0 ||
