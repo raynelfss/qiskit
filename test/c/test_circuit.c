@@ -928,6 +928,7 @@ int test_circuit(void) {
     num_failed += RUN_TEST(test_circuit_copy);
     num_failed += RUN_TEST(test_circuit_copy_with_instructions);
     num_failed += RUN_TEST(test_no_gate_1000_bits);
+    num_failed += RUN_TEST(test_get_gate_counts);
     num_failed += RUN_TEST(test_get_gate_counts_bv_no_measure);
     num_failed += RUN_TEST(test_get_gate_counts_bv_measures);
     num_failed += RUN_TEST(test_get_gate_counts_bv_barrier_and_measures);
