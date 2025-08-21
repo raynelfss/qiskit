@@ -29,7 +29,7 @@ int test_empty(void) {
     size_t num_instructions = qk_circuit_num_instructions(qc);
 
     QkOpCounts counts = qk_circuit_count_ops(qc);
-    int opcount = counts.len;
+    size_t opcount = counts.len;
 
     qk_opcounts_clear(&counts);
     qk_circuit_free(qc);
