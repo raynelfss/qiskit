@@ -10,16 +10,19 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use core::num;
 use std::sync::OnceLock;
 
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
+use nalgebra::{Matrix2, Matrix4};
+use ndarray::ArrayBase;
 use pyo3::prelude::*;
 use qiskit_circuit::Qubit;
 use qiskit_circuit::bit::QuantumRegister;
 use qiskit_circuit::circuit_instruction::OperationFromPython;
 use qiskit_circuit::imports::GATE;
-use qiskit_circuit::operations::{StandardGate, StandardInstruction, get_standard_gate_names};
+use qiskit_circuit::operations::{get_standard_gate_names, ArrayType, StandardGate, StandardInstruction, UnitaryGate};
 use qiskit_circuit::packed_instruction::PackedOperation;
 use qiskit_circuit::parameter::parameter_expression::ParameterExpression;
 use qiskit_circuit::parameter::symbol_expr::Symbol;
@@ -183,7 +186,12 @@ fn name_to_packed_operation(name: &str, num_qubits: u32) -> Option<PackedOperati
         };
         Some(inst.into())
     } else if name == "unitary" {
-        unreachable!("Having a unitary result from an `EquivalenceLibrary is not possible")
+        let array = match num_qubits {
+            1 => ArrayType::OneQ(Matrix2::identity()),
+            2 => ArrayType::TwoQ(Matrix4::identity()),
+            _ => ArrayType::NDArray(ArrayBase::eye(2_usize.pow(num_qubits)))
+        };
+        Some(UnitaryGate{array}.into())
     } else {
         None
     }
