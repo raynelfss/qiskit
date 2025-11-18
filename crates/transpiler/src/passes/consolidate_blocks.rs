@@ -43,7 +43,7 @@ use qiskit_synthesis::two_qubit_decompose::{
 };
 
 use crate::passes::unitary_synthesis::{PARAM_SET, TWO_QUBIT_BASIS_SET};
-use crate::target::{Qargs, Target};
+use crate::target::{PyTarget, Qargs, Target};
 use qiskit_circuit::PhysicalQubit;
 
 #[allow(clippy::large_enum_variant)]
@@ -185,7 +185,7 @@ fn py_run_consolidate_blocks(
     decomposer: DecomposerType,
     basis_gate_name: &str,
     force_consolidate: bool,
-    target: Option<&Target>,
+    target: Option<&PyTarget>,
     basis_gates: Option<HashSet<String>>,
     blocks: Option<Vec<Vec<usize>>>,
     runs: Option<Vec<Vec<usize>>>,

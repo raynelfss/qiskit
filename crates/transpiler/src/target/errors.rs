@@ -50,6 +50,9 @@ pub enum TargetError {
     ///The specified bounds for the instruction are not valid.
     #[error["Lower bound {low} is not less than higher bound {high}."]]
     InvalidBounds { low: f64, high: f64 },
+    /// The specified number of qubits does not match the input of qubit properties.
+    #[error["The value of num_qubits: {num_qubits} does not match the length of the input qubit_properties list {num_props"]]
+    NumQubitMisMatch{num_qubits: u32, num_props: usize},
 }
 
 impl From<TargetError> for ::pyo3::PyErr {

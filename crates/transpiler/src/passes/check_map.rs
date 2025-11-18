@@ -20,6 +20,7 @@ use qiskit_circuit::imports::CIRCUIT_TO_DAG;
 use qiskit_circuit::operations::{Operation, OperationRef};
 use qiskit_circuit::{PhysicalQubit, Qubit};
 
+use crate::target::PyTarget;
 use crate::target::Target;
 
 fn recurse(
@@ -90,12 +91,12 @@ fn recurse(
 pub fn py_run_check_map(
     py: Python,
     dag: &DAGCircuit,
-    target: &Target,
+    target: &PyTarget,
 ) -> PyResult<Option<(String, [u32; 2])>> {
     if dag.has_control_flow() {
-        recurse(py, dag, target, None)
+        recurse(py, dag, target.inner(), None)
     } else {
-        Ok(run_check_map(dag, target)
+        Ok(run_check_map(dag, target.inner())
             .map(|(name, qubits)| (name.to_string(), [qubits[0].0, qubits[1].0])))
     }
 }
