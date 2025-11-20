@@ -35,7 +35,7 @@ use qiskit_circuit::packed_instruction::PackedInstruction;
 use qiskit_circuit::{PhysicalQubit, VirtualQubit, vf2};
 
 use super::error_map::ErrorMap;
-use crate::target::{Qargs, QargsRef, Target};
+use crate::target::{PyTarget, Qargs, QargsRef, Target};
 
 const PARALLEL_THRESHOLD: usize = 50;
 
@@ -597,7 +597,18 @@ where
 }
 
 #[pyfunction]
-#[pyo3(signature = (dag, target, config, *, strict_direction=false, avg_error_map=None))]
+#[pyo3(signature = (dag, target, config, *, strict_direction=false, avg_error_map=None), name = "vf2_layout_pass")]
+pub fn py_vf2_layout_pass(
+    dag: &DAGCircuit,
+    target: &PyTarget,
+    config: &Vf2PassConfiguration,
+    strict_direction: bool,
+    avg_error_map: Option<ErrorMap>,
+) -> PyResult<Vf2PassReturn> {
+    vf2_layout_pass(dag, target.inner(), config, strict_direction, avg_error_map)
+}
+
+
 pub fn vf2_layout_pass(
     dag: &DAGCircuit,
     target: &Target,
@@ -728,7 +739,7 @@ pub fn score_layout(
 
 pub fn vf2_layout_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(score_layout))?;
-    m.add_wrapped(wrap_pyfunction!(vf2_layout_pass))?;
+    m.add_wrapped(wrap_pyfunction!(py_vf2_layout_pass))?;
     m.add("MultiQEncountered", m.py().get_type::<MultiQEncountered>())?;
     m.add_class::<EdgeList>()?;
     m.add(

@@ -191,6 +191,21 @@ fn py_run_consolidate_blocks(
     runs: Option<Vec<Vec<usize>>>,
     qubit_map: Option<Vec<PhysicalQubit>>,
 ) -> PyResult<()> {
+    inner_run_consolidate_blocks(dag, decomposer, basis_gate_name, force_consolidate, target.map(|target| target.inner()), basis_gates, blocks, runs, qubit_map)
+}
+
+
+fn inner_run_consolidate_blocks(
+    dag: &mut DAGCircuit,
+    decomposer: DecomposerType,
+    basis_gate_name: &str,
+    force_consolidate: bool,
+    target: Option<&Target>,
+    basis_gates: Option<HashSet<String>>,
+    blocks: Option<Vec<Vec<usize>>>,
+    runs: Option<Vec<Vec<usize>>>,
+    qubit_map: Option<Vec<PhysicalQubit>>,
+) -> PyResult<()> {
     // The node indices that enter from `blocks` and `runs` come from Python space, and we can't
     // trust that they come from a correct analysis (or the block/run collection might have been
     // invalidated). Rather than panicking, we should raise Python-space exceptions. We don't have
@@ -502,7 +517,7 @@ pub fn run_consolidate_blocks(
 ) -> PyResult<()> {
     let approximation_degree = approximation_degree.unwrap_or(1.0);
     let (decomposer, basis_gate) = get_decomposer_and_basis_gate(target, approximation_degree);
-    py_run_consolidate_blocks(
+    inner_run_consolidate_blocks(
         dag,
         decomposer,
         basis_gate.name(),

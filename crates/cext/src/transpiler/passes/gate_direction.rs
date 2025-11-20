@@ -15,7 +15,7 @@ use crate::pointers::{const_ptr_as_ref, mut_ptr_as_ref};
 use qiskit_circuit::circuit_data::CircuitData;
 use qiskit_circuit::converters::dag_to_circuit;
 use qiskit_circuit::dag_circuit::DAGCircuit;
-use qiskit_transpiler::passes::{check_direction_target, fix_direction_target};
+use qiskit_transpiler::passes::{py_check_direction_target, fix_direction_target};
 use qiskit_transpiler::target::Target;
 
 /// @ingroup QkTranspilerPasses
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn qk_transpiler_pass_standalone_check_gate_direction(
     let dag = DAGCircuit::from_circuit_data(circuit, false, None, None, None, None)
         .expect("Circuit to DAG conversion failed");
 
-    check_direction_target(&dag, target).expect("Unexpected error occurred in CheckGateDirection")
+    py_check_direction_target(&dag, target).expect("Unexpected error occurred in CheckGateDirection")
 }
 
 /// @ingroup QkTranspilerPasses

@@ -769,7 +769,7 @@ class Target(BaseTarget):
             "base": super().__getstate__(),
         }
 
-    def __setstate__(self, state: tuple):
+    def __setstate__(self, state: dict):
         self._gate_map = state["_gate_map"]
         self._coupling_graph = state["coupling_graph"]
         self._instruction_durations = state["instruction_durations"]

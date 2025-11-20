@@ -11,7 +11,7 @@
 // that they have been altered from the originals.
 
 use crate::TranspilerError;
-use crate::target::Target;
+use crate::target::{PyTarget, Target};
 use hashbrown::HashSet;
 use pyo3::{intern, prelude::*};
 use qiskit_circuit::PhysicalQubit;
@@ -64,6 +64,10 @@ pub fn check_direction_coupling_map(
 ///     true iff all two-qubit gates comply with the target's coupling constraints
 #[pyfunction]
 #[pyo3(name = "check_gate_direction_target")]
+pub(crate) fn py_check_direction_target(dag: &DAGCircuit, target: &PyTarget) -> PyResult<bool> {
+    check_direction_target(dag, target.inner())
+}
+
 pub fn check_direction_target(dag: &DAGCircuit, target: &Target) -> PyResult<bool> {
     let target_check = |inst: &PackedInstruction, op_args: &[Qubit]| -> bool {
         let qargs = [
@@ -182,14 +186,14 @@ pub fn fix_direction_coupling_map(
 ///     the transformed DAGCircuit
 #[pyfunction]
 #[pyo3(name = "fix_gate_direction_target")]
-pub fn fix_direction_target(dag: &mut DAGCircuit, target: &Target) -> PyResult<()> {
+pub fn fix_direction_target(dag: &mut DAGCircuit, target: &PyTarget) -> PyResult<()> {
     let target_check = |inst: &PackedInstruction, op_args: &[Qubit]| -> bool {
         let qargs: &[PhysicalQubit] = &[
             PhysicalQubit::new(op_args[0].0),
             PhysicalQubit::new(op_args[1].0),
         ];
 
-        target.instruction_supported(inst.op.name(), qargs, inst.params_view(), false)
+        target.inner().instruction_supported(inst.op.name(), qargs, inst.params_view(), false)
     };
 
     fix_gate_direction(dag, &target_check, None)
@@ -520,7 +524,7 @@ fn rzx_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
 
 pub fn gate_direction_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(check_direction_coupling_map))?;
-    m.add_wrapped(wrap_pyfunction!(check_direction_target))?;
+    m.add_wrapped(wrap_pyfunction!(py_check_direction_target))?;
     m.add_wrapped(wrap_pyfunction!(fix_direction_coupling_map))?;
     m.add_wrapped(wrap_pyfunction!(fix_direction_target))?;
     Ok(())

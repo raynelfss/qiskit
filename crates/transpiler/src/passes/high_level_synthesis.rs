@@ -39,6 +39,7 @@ use qiskit_circuit::{Clbit, Qubit, VarsMode};
 use qiskit_synthesis::pauli_product_measurement::synthesize_ppm;
 use smallvec::SmallVec;
 
+use crate::target::PyTarget;
 use crate::TranspilerError;
 use crate::equivalence::EquivalenceLibrary;
 use crate::target::Qargs;
@@ -299,7 +300,7 @@ pub struct HighLevelSynthesisData {
     // It needs to be used both from python and rust, and hence is represented
     // as Py<Target> to avoid cloning.
     #[pyo3(get)]
-    target: Option<Py<Target>>,
+    target: Option<Py<PyTarget>>,
 
     // The equivalence library used (instructions in this library will not
     // be unrolled by this pass).
@@ -338,7 +339,7 @@ impl HighLevelSynthesisData {
         hls_plugin_manager: Py<PyAny>,
         hls_op_names: HashSet<String>,
         coupling_map: Py<PyAny>,
-        target: Option<Py<Target>>,
+        target: Option<Py<PyTarget>>,
         equivalence_library: Option<Py<EquivalenceLibrary>>,
         device_insts: HashSet<String>,
         use_physical_indices: bool,
@@ -411,7 +412,7 @@ fn all_instructions_supported(
     match &borrowed_data.target {
         Some(target) => {
             let target = target.borrow(py);
-            if target.num_qubits.is_some() {
+            if target.inner().num_qubits.is_some() {
                 // If we have the target and HighLevelSynthesis runs pre-routing,
                 // we check whether every operation name in op_names is supported
                 // by the target.
@@ -419,7 +420,7 @@ fn all_instructions_supported(
                     return Ok(false);
                 }
                 Ok(op_keys
-                    .all(|name| target.instruction_supported(name, &Qargs::Global, &[], false)))
+                    .all(|name| target.inner().instruction_supported(name, &Qargs::Global, &[], false)))
             } else {
                 // If we do not have the target, we check whether every operation
                 // in op_names is inside the basis gates.
@@ -440,7 +441,8 @@ fn instruction_supported(
     let borrowed_data = data.borrow();
     match &borrowed_data.target {
         Some(target) => {
-            let target = target.borrow(py);
+            let borrowed_target = target.borrow(py);
+            let target = borrowed_target.inner();
             if target.num_qubits.is_some() {
                 if borrowed_data.use_physical_indices {
                     let physical_qubits: Qargs =

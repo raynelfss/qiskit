@@ -36,6 +36,7 @@ use qiskit_circuit::operations::{Operation, OperationRef, Param, PythonOperation
 use qiskit_circuit::packed_instruction::{PackedInstruction, PackedOperation};
 use qiskit_circuit::{Qubit, VarsMode, imports};
 
+use crate::target::PyTarget;
 use crate::QiskitError;
 use crate::target::{NormalOperation, Target, TargetOperation};
 use crate::target::{Qargs, QargsRef};
@@ -254,7 +255,7 @@ pub fn py_unitary_synthesis(
     dag: &mut DAGCircuit,
     qubit_indices: Vec<usize>,
     min_qubits: usize,
-    target: Option<&Target>,
+    target: Option<&PyTarget>,
     basis_gates: HashSet<String>,
     synth_gates: HashSet<String>,
     coupling_edges: HashSet<[PhysicalQubit; 2]>,
@@ -266,7 +267,7 @@ pub fn py_unitary_synthesis(
         dag,
         qubit_indices,
         min_qubits,
-        target,
+        target.map(|target| target.inner()),
         basis_gates,
         synth_gates,
         coupling_edges,

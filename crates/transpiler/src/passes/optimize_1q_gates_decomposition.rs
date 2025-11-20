@@ -22,6 +22,7 @@ use rustworkx_core::petgraph::stable_graph::NodeIndex;
 use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
 use qiskit_circuit::operations::{Operation, OperationRef, Param};
 
+use crate::target::PyTarget;
 use crate::target::{Target, TargetOperation};
 use qiskit_circuit::{PhysicalQubit, gate_matrix};
 use qiskit_synthesis::euler_one_qubit_decomposer::{
@@ -56,7 +57,7 @@ fn compute_error_from_target_one_qubit_sequence(
 #[pyo3(name = "optimize_1q_gates_decomposition", signature = (dag, *, target=None, basis_gates=None, global_decomposers=None))]
 pub fn run_optimize_1q_gates_decomposition(
     dag: &mut DAGCircuit,
-    target: Option<&Target>,
+    target: Option<&PyTarget>,
     basis_gates: Option<HashSet<String>>,
     global_decomposers: Option<Vec<String>>,
 ) -> PyResult<()> {
@@ -78,10 +79,11 @@ pub fn run_optimize_1q_gates_decomposition(
             let basis_gates = match target {
                 Some(target) => Some(
                     target
+                        .inner()
                         .operation_names_for_qargs(&[qubit])?
                         .into_iter()
                         .filter(|gate_name| {
-                            let target_op = target.operation_from_name(gate_name).unwrap();
+                            let target_op = target.inner().operation_from_name(gate_name).unwrap();
                             let TargetOperation::Normal(gate) = target_op else {
                                 return false;
                             };
@@ -167,7 +169,7 @@ pub fn run_optimize_1q_gates_decomposition(
                 let node = &dag[*node_index];
                 if let NodeType::Operation(inst) = node {
                     if let Some(target) = target {
-                        error *= compute_error_term_from_target(inst.op.name(), target, qubit);
+                        error *= compute_error_term_from_target(inst.op.name(), target.inner(), qubit);
                     }
                     inst.op
                         .matrix_as_static_1q(inst.params_view())
@@ -198,7 +200,7 @@ pub fn run_optimize_1q_gates_decomposition(
             Some(seq) => seq,
             None => continue,
         };
-        let new_error = compute_error_from_target_one_qubit_sequence(&sequence, qubit, target);
+        let new_error = compute_error_from_target_one_qubit_sequence(&sequence, qubit, target.map(|target| target.inner()));
 
         let mut outside_basis = false;
         if let Some(basis) = basis_gates {

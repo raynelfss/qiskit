@@ -14,6 +14,7 @@ use hashbrown::{HashMap, HashSet};
 use pyo3::prelude::*;
 use qiskit_circuit::circuit_data::CircuitData;
 
+use crate::target::PyTarget;
 use crate::target::{Qargs, Target};
 use qiskit_circuit::PhysicalQubit;
 use qiskit_circuit::Qubit;
@@ -23,7 +24,7 @@ use qiskit_circuit::packed_instruction::PackedInstruction;
 
 #[pyfunction]
 #[pyo3(name = "any_gate_missing_from_target")]
-pub fn gates_missing_from_target(dag: &DAGCircuit, target: &Target) -> PyResult<bool> {
+pub fn gates_missing_from_target(dag: &DAGCircuit, target: &PyTarget) -> PyResult<bool> {
     #[inline]
     fn is_universal(gate: &PackedInstruction) -> bool {
         matches!(gate.op.name(), "barrier" | "store")
@@ -91,7 +92,7 @@ pub fn gates_missing_from_target(dag: &DAGCircuit, target: &Target) -> PyResult<
             continue;
         }
         let qargs = dag.qargs_interner().get(gate.qubits);
-        if visit_gate(target, gate, qargs, &wire_map)? {
+        if visit_gate(target.inner(), gate, qargs, &wire_map)? {
             return Ok(true);
         }
     }

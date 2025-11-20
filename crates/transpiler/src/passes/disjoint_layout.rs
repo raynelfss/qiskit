@@ -34,6 +34,7 @@ use qiskit_circuit::operations::{Operation, OperationRef, Param, StandardInstruc
 use qiskit_circuit::packed_instruction::PackedOperation;
 use qiskit_circuit::{Clbit, PhysicalQubit, Qubit, VarsMode, VirtualQubit};
 
+use crate::target::PyTarget;
 use crate::TranspilerError;
 use crate::target::{Qargs, Target};
 
@@ -90,10 +91,11 @@ fn subgraph(graph: &CouplingMap, node_set: &HashSet<NodeIndex>) -> CouplingMap {
 #[pyfunction(name = "run_pass_over_connected_components")]
 pub fn py_run_pass_over_connected_components(
     dag: Bound<DAGCircuit>,
-    target: &Target,
+    target: &PyTarget,
     run_func: Bound<PyAny>,
 ) -> PyResult<Option<Vec<Py<PyAny>>>> {
     let py = dag.py();
+    let inner_target = target.inner();
     let func = |dag: Bound<DAGCircuit>, cmap: &CouplingMap| -> PyResult<Py<PyAny>> {
         let py = run_func.py();
         let coupling_map_cls = COUPLING_MAP.get_bound(py);
@@ -122,18 +124,18 @@ pub fn py_run_pass_over_connected_components(
     };
     let components = {
         let mut borrowed = dag.borrow_mut();
-        distribute_components(borrowed.deref_mut(), target)?
+        distribute_components(borrowed.deref_mut(), inner_target)?
     };
     match components {
         DisjointSplit::NoneNeeded => {
-            let coupling_map: CouplingMap = match build_coupling_map(target) {
+            let coupling_map: CouplingMap = match build_coupling_map(inner_target) {
                 Some(map) => map,
                 None => return Ok(None),
             };
             Ok(Some(vec![func(dag, &coupling_map)?]))
         }
         DisjointSplit::TargetSubset(qubits) => {
-            let coupling_map = build_coupling_map(target).unwrap();
+            let coupling_map = build_coupling_map(inner_target).unwrap();
             let cmap = subgraph(
                 &coupling_map,
                 &qubits.iter().map(|x| NodeIndex::new(x.index())).collect(),
@@ -144,7 +146,7 @@ pub fn py_run_pass_over_connected_components(
             components
                 .into_iter()
                 .map(|component| {
-                    let coupling_map = build_coupling_map(target).unwrap();
+                    let coupling_map = build_coupling_map(inner_target).unwrap();
                     let cmap = subgraph(
                         &coupling_map,
                         &component

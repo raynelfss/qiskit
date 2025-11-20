@@ -43,7 +43,7 @@ use qiskit_circuit::{PhysicalQubit, Qubit, VirtualQubit, getenv_use_multiple_thr
 
 use crate::TranspilerError;
 use crate::neighbors::Neighbors;
-use crate::target::{Target, TargetCouplingError};
+use crate::target::{PyTarget, Target, TargetCouplingError};
 
 use super::dag::{InteractionKind, SabreDAG};
 use super::heuristic::{BasicHeuristic, DecayHeuristic, Heuristic, LookaheadHeuristic, SetScaling};
@@ -305,6 +305,13 @@ impl RoutingTarget {
     pub fn num_qubits(&self) -> usize {
         self.neighbors.num_qubits()
     }
+
+    pub fn from_target(target: &Target) -> Result<Self, TargetCouplingError> {
+        let coupling = target.coupling_graph()?;
+        Ok(Self::from_neighbors(
+            Neighbors::from_coupling(&coupling),
+        ))
+    }
 }
 
 /// Python wrapper for the Rust-space Sabre target object.
@@ -352,17 +359,14 @@ impl PyRoutingTarget {
     }
 
     #[staticmethod]
-    pub(crate) fn from_target(target: &Target) -> PyResult<Self> {
-        let coupling = match target.coupling_graph() {
-            Ok(coupling) => coupling,
-            Err(TargetCouplingError::AllToAll) => return Ok(Self(None)),
+    pub(crate) fn from_target(target: &PyTarget) -> PyResult<Self> {
+        match RoutingTarget::from_target(target.inner()) {
+            Ok(coupling) => Ok(Self(Some(coupling))),
+            Err(TargetCouplingError::AllToAll) => Ok(Self(None)),
             Err(e @ TargetCouplingError::MultiQ(_)) => {
-                return Err(TranspilerError::new_err(e.to_string()));
+                Err(TranspilerError::new_err(e.to_string()))
             }
-        };
-        Ok(Self(Some(RoutingTarget::from_neighbors(
-            Neighbors::from_coupling(&coupling),
-        ))))
+        }
     }
 
     fn coupling_list(&self) -> Option<Vec<[PhysicalQubit; 2]>> {
@@ -778,7 +782,7 @@ impl<'a> RoutingState<'a> {
 ///     qubits to their assigned physical qubits at the *end* of the circuit execution.
 #[pyfunction]
 #[pyo3(signature=(dag, target, heuristic, initial_layout, num_trials, seed=None, run_in_parallel=None))]
-pub fn sabre_routing(
+pub(crate) fn py_sabre_routing(
     dag: &DAGCircuit,
     target: &PyRoutingTarget,
     heuristic: &Heuristic,
@@ -787,7 +791,19 @@ pub fn sabre_routing(
     seed: Option<u64>,
     run_in_parallel: Option<bool>,
 ) -> PyResult<(DAGCircuit, NLayout)> {
-    let Some(target) = target.0.as_ref() else {
+    sabre_routing(dag, target.0.as_ref(), heuristic, initial_layout, num_trials, seed, run_in_parallel)
+}
+
+pub fn sabre_routing(
+    dag: &DAGCircuit,
+    target: Option<&RoutingTarget>,
+    heuristic: &Heuristic,
+    initial_layout: &NLayout,
+    num_trials: usize,
+    seed: Option<u64>,
+    run_in_parallel: Option<bool>,
+) -> PyResult<(DAGCircuit, NLayout)> {
+    let Some(target) = target else {
         // All-to-all coupling.
         return Ok((dag.clone(), initial_layout.clone()));
     };

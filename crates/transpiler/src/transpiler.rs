@@ -16,7 +16,7 @@ use anyhow::Result;
 
 use crate::commutation_checker::get_standard_commutation_checker;
 use crate::equivalence::EquivalenceLibrary;
-use crate::passes::sabre::route::PyRoutingTarget;
+use crate::passes::sabre::route::{PyRoutingTarget, RoutingTarget};
 use crate::passes::*;
 use crate::standard_equivalence_library::generate_standard_equivalence_library;
 use crate::target::Target;
@@ -247,7 +247,7 @@ pub fn transpile(
     }
     // Routing stage
     if optimization_level == OptimizationLevel::Level0 {
-        let routing_target = PyRoutingTarget::from_target(target)?;
+        let routing_target = RoutingTarget::from_target(target)?;
         // run_check_map returns Some((gate, qargs)) if the circuit violates the connectivity
         // constraints in the target and returns None if the circuit conforms to the undirected
         // connectivity constraints
@@ -257,7 +257,7 @@ pub fn transpile(
                 .expect("a layout pass was already called");
             let (out_dag, final_layout) = sabre::sabre_routing(
                 &dag,
-                &routing_target,
+                Some(&routing_target),
                 &sabre_heuristic,
                 initial_layout,
                 5,
