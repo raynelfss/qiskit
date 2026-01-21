@@ -20,6 +20,7 @@ pub mod circuit_data;
 pub mod circuit_instruction;
 pub mod classical;
 pub mod converters;
+pub mod custom_operations;
 pub mod dag_circuit;
 pub mod dag_node;
 mod dot_utils;
