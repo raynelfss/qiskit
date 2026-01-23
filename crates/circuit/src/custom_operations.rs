@@ -262,12 +262,18 @@ impl CustomInstruction {
     }
 }
 
-type MatrixFunction<T> = Box<dyn Fn(&[Param]) -> Option<T>>;
+type ParametricFunction<T> = Box<dyn Fn(&[Param]) -> Option<T>>;
+
+enum MatrixType {
+    Fixed(Array2<Complex64>),
+    Parametric(ParametricFunction<Array2<Complex64>>),
+}
+
 /// A fully functional custom gate
 pub struct CustomGate {
     gate: OpaqueGate,
     definition: Option<Arc<CircuitData>>,
-    matrix_definition: MatrixFunction<Array2<Complex64>>,
+    matrix_definition: Option<MatrixType>,
 }
 
 impl Operation for CustomGate {
@@ -293,15 +299,34 @@ impl Operation for CustomGate {
 }
 
 impl CustomGate {
-    pub fn new<T>(name: String, num_qubits: u32, num_params: u32, matrix: T) -> Self
-    where
-        T: Fn(&[Param]) -> Option<Array2<Complex64>> + 'static,
-    {
+    pub fn new(name: String, num_qubits: u32, num_params: u32) -> Self {
         Self {
             gate: OpaqueGate::new(name, num_qubits, num_params),
             definition: None,
-            matrix_definition: Box::new(matrix),
+            matrix_definition: None,
         }
+    }
+
+    pub fn with_fixed_matrix(mut self, matrix: Array2<Complex64>) -> Self {
+        // TODO: Implement results for the errors here.
+        if self.num_params() != 0 {
+            panic!("Cannot add a fixed matrix to a parametric gate.");
+        }
+        self.matrix_definition.replace(MatrixType::Fixed(matrix));
+        self
+    }
+
+    pub fn with_parametric_matrix<T>(mut self, matrix: T) -> Self
+    where
+        T: Fn(&[Param]) -> Option<Array2<Complex64>> + 'static,
+    {
+        // TODO: Implement results for the errors here.
+        if self.num_params() == 0 {
+            panic!("Cannot add a parametric matrix to a gate with no parameters.");
+        }
+        self.matrix_definition
+            .replace(MatrixType::Parametric(Box::new(matrix)));
+        self
     }
 
     pub fn with_definition<C>(mut self, definition: C) -> Self
@@ -333,7 +358,11 @@ impl CustomGate {
     }
 
     pub fn matrix(&self, params: &[Param]) -> Option<Array2<Complex64>> {
-        (self.matrix_definition)(params)
+        match self.matrix_definition.as_ref() {
+            Some(MatrixType::Fixed(matrix)) => params.is_empty().then_some(matrix.clone()),
+            Some(MatrixType::Parametric(parametric)) => parametric(params),
+            None => None,
+        }
     }
 }
 
@@ -346,40 +375,28 @@ mod test {
     use crate::operations::Operation;
     use crate::operations::Param;
     use crate::operations::StandardGate;
-    use ndarray::Array2;
     use ndarray::aview2;
     use num_complex::c64;
-    use numpy::Complex64;
     use smallvec::smallvec;
     use std::f64::consts::FRAC_1_SQRT_2;
     use std::f64::consts::PI;
 
     #[test]
     fn try_custom_h_gate() {
-        let gate = CustomGate::new(
-            "H".into(),
-            1,
-            0,
-            |params: &[Param]| -> Option<Array2<Complex64>> {
-                let h_gate_def = [
-                    [c64(FRAC_1_SQRT_2, 0.), c64(FRAC_1_SQRT_2, 0.)],
-                    [c64(FRAC_1_SQRT_2, 0.), c64(-FRAC_1_SQRT_2, 0.)],
-                ];
-                if params.is_empty() {
-                    Some(aview2(&h_gate_def).to_owned())
-                } else {
-                    None
-                }
-            },
-        )
-        .with_definition(
-            CircuitData::from_standard_gates(
-                1,
-                [(StandardGate::H, smallvec![], smallvec![Qubit(0)])],
-                0.0.into(),
-            )
-            .expect("Circuit should work"),
-        );
+        let h_matrix = [
+            [c64(FRAC_1_SQRT_2, 0.), c64(FRAC_1_SQRT_2, 0.)],
+            [c64(FRAC_1_SQRT_2, 0.), c64(-FRAC_1_SQRT_2, 0.)],
+        ];
+        let gate = CustomGate::new("H".into(), 1, 0)
+            .with_fixed_matrix(aview2(&h_matrix).to_owned())
+            .with_definition(
+                CircuitData::from_standard_gates(
+                    1,
+                    [(StandardGate::H, smallvec![], smallvec![Qubit(0)])],
+                    0.0.into(),
+                )
+                .expect("Circuit should work"),
+            );
 
         assert_eq!(
             gate.name(),
@@ -406,11 +423,13 @@ mod test {
             gate.label()
         );
         let matrix_res = gate.matrix(&[]);
-        let matrix_exp = Some(aview2(&H_GATE).to_owned());
+        let matrix_exp = Some(aview2(&H_GATE));
         assert_eq!(
-            matrix_res, matrix_exp,
+            matrix_res.as_ref().map(|mat| mat.view()),
+            matrix_exp,
             "Gate matrix did not match, expected {:?} obtained '{:?}'",
-            matrix_res, matrix_exp
+            matrix_res,
+            matrix_exp
         );
 
         let matrix_res = gate.matrix(&[Param::Float(PI)]);
