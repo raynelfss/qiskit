@@ -366,6 +366,17 @@ impl CustomGate {
     }
 }
 
+pub trait Instruction: Operation {
+    type InverseType: Clone;
+    fn label(&self) -> Option<&str>;
+    fn inverse(&self, params: &[Param]) -> Self::InverseType;
+    fn definition(&self) -> Option<&CircuitData>;
+}
+
+pub trait Gate: Instruction {
+    fn matrix(&self, params: &[Param]) -> Option<Array2<Complex64>>;
+}
+
 #[cfg(test)]
 mod test {
     use crate::Qubit;
