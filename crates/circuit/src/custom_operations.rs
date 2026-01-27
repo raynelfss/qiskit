@@ -10,7 +10,7 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use std::sync::Arc;
+use std::any::{Any, TypeId};
 
 use ndarray::Array2;
 use numpy::Complex64;
@@ -20,6 +20,7 @@ use crate::{
     circuit_data::CircuitData,
     imports::{GATE, INSTRUCTION},
     operations::{Operation, Param},
+    packed_instruction::PackedOperation,
 };
 use pyo3::prelude::*;
 
@@ -180,201 +181,43 @@ pub enum OpaqueOperation {
     Instruction(OpaqueInstruction),
 }
 
-/// A fully functional custom instruction
-pub struct CustomInstruction {
-    instruction: OpaqueInstruction,
-    /// The definition of the instruction as a Circuit.
-    definition: Option<Arc<CircuitData>>,
+pub trait CustomOperation: Operation + Any {
+    fn clone_dyn(&self) -> Box<dyn CustomOperation>;
 }
 
-impl Operation for CustomInstruction {
-    fn name(&self) -> &str {
-        self.instruction.name()
-    }
-
-    fn num_qubits(&self) -> u32 {
-        self.instruction.num_params()
-    }
-
-    fn num_clbits(&self) -> u32 {
-        self.instruction.num_clbits()
-    }
-
-    fn num_params(&self) -> u32 {
-        self.instruction.num_params()
-    }
-
-    fn directive(&self) -> bool {
-        self.instruction.directive()
+impl dyn CustomOperation + 'static {
+    pub fn downcast_ref<T: CustomOperation + 'static>(&self) -> Option<&T> {
+        (self.type_id() == TypeId::of::<T>()).then(|| unsafe { &*(self as *const _ as *const T) })
     }
 }
 
-impl CustomInstruction {
-    pub fn new(
-        name: String,
-        num_qubits: u32,
-        num_clbits: u32,
-        num_params: u32,
-        directive: bool,
-    ) -> Self {
-        Self {
-            instruction: OpaqueInstruction {
-                name,
-                num_qubits,
-                num_clbits,
-                num_params,
-                label: None,
-                directive,
-            },
-            definition: None,
-        }
-    }
-
-    pub fn with_definition<C>(mut self, definition: C) -> Self
-    where
-        C: Into<Arc<CircuitData>>,
-    {
-        let circuit = definition.into();
-
-        // TODO: Implement results for the errors here.
-        if circuit.num_qubits() != self.num_qubits() as usize {
-            panic!("Number of qubits mismatched in definition.")
-        }
-        if circuit.num_clbits() != self.num_clbits() as usize {
-            panic!("Number of clbits mismatched in definition.")
-        }
-
-        self.definition.replace(circuit);
-        self
-    }
-
-    pub fn with_label(mut self, label: String) -> Self {
-        self.instruction.label.replace(label);
-        self
-    }
-
-    pub fn definition(&self) -> Option<&CircuitData> {
-        self.definition.as_deref()
-    }
-
-    pub fn label(&self) -> Option<&str> {
-        self.instruction.label()
-    }
-}
-
-type ParametricFunction<T> = Box<dyn Fn(&[Param]) -> Option<T>>;
-
-enum MatrixType {
-    Fixed(Array2<Complex64>),
-    Parametric(ParametricFunction<Array2<Complex64>>),
-}
-
-/// A fully functional custom gate
-pub struct CustomGate {
-    gate: OpaqueGate,
-    definition: Option<Arc<CircuitData>>,
-    matrix_definition: Option<MatrixType>,
-}
-
-impl Operation for CustomGate {
-    fn name(&self) -> &str {
-        self.gate.name()
-    }
-
-    fn num_qubits(&self) -> u32 {
-        self.gate.num_qubits()
-    }
-
-    fn num_clbits(&self) -> u32 {
-        self.gate.num_clbits()
-    }
-
-    fn num_params(&self) -> u32 {
-        self.gate.num_params()
-    }
-
-    fn directive(&self) -> bool {
-        self.gate.directive()
-    }
-}
-
-impl CustomGate {
-    pub fn new(name: String, num_qubits: u32, num_params: u32) -> Self {
-        Self {
-            gate: OpaqueGate::new(name, num_qubits, num_params),
-            definition: None,
-            matrix_definition: None,
-        }
-    }
-
-    pub fn with_fixed_matrix(mut self, matrix: Array2<Complex64>) -> Self {
-        // TODO: Implement results for the errors here.
-        if self.num_params() != 0 {
-            panic!("Cannot add a fixed matrix to a parametric gate.");
-        }
-        self.matrix_definition.replace(MatrixType::Fixed(matrix));
-        self
-    }
-
-    pub fn with_parametric_matrix<T>(mut self, matrix: T) -> Self
-    where
-        T: Fn(&[Param]) -> Option<Array2<Complex64>> + 'static,
-    {
-        // TODO: Implement results for the errors here.
-        if self.num_params() == 0 {
-            panic!("Cannot add a parametric matrix to a gate with no parameters.");
-        }
-        self.matrix_definition
-            .replace(MatrixType::Parametric(Box::new(matrix)));
-        self
-    }
-
-    pub fn with_definition<C>(mut self, definition: C) -> Self
-    where
-        C: Into<Arc<CircuitData>>,
-    {
-        let circuit = definition.into();
-
-        // TODO: Implement results for the errors here.
-        if circuit.num_qubits() != self.num_qubits() as usize {
-            panic!("Number of qubits mismatched in definition.")
-        }
-
-        self.definition.replace(circuit);
-        self
-    }
-
-    pub fn with_label(mut self, label: String) -> Self {
-        self.gate = self.gate.with_label(label);
-        self
-    }
-
-    pub fn definition(&self) -> Option<&CircuitData> {
-        self.definition.as_deref()
-    }
-
-    pub fn label(&self) -> Option<&str> {
-        self.gate.label()
-    }
-
-    pub fn matrix(&self, params: &[Param]) -> Option<Array2<Complex64>> {
-        match self.matrix_definition.as_ref() {
-            Some(MatrixType::Fixed(matrix)) => params.is_empty().then_some(matrix.clone()),
-            Some(MatrixType::Parametric(parametric)) => parametric(params),
-            None => None,
-        }
-    }
-}
-
-pub trait Instruction: Operation {
-    type InverseType: Clone;
+pub trait CustomInstruction: CustomOperation {
     fn label(&self) -> Option<&str>;
-    fn inverse(&self, params: &[Param]) -> Self::InverseType;
-    fn definition(&self) -> Option<&CircuitData>;
+    fn inverse(&self, params: &[Param]) -> Option<(PackedOperation, SmallVec<[Param; 3]>)>;
+    fn definition(&self) -> Option<CircuitData>;
 }
 
-pub trait Gate: Instruction {
+impl dyn CustomInstruction + 'static {
+    // Trait implementation needs to be repeated here as upcasting
+    // is stabilized in Rust 1.86+ and we barely missed the cutoff.
+    pub fn downcast_ref<T: CustomInstruction + 'static>(&self) -> Option<&T> {
+        (self.type_id() == TypeId::of::<T>()).then(|| unsafe { &*(self as *const _ as *const T) })
+    }
+}
+
+pub trait CustomGate: CustomInstruction {
     fn matrix(&self, params: &[Param]) -> Option<Array2<Complex64>>;
+    fn num_ctrl_qubits(&self) -> u32;
+    fn is_controlled_gate(&self) -> bool {
+        self.num_ctrl_qubits() > 0
+    }
+}
+impl dyn CustomGate + 'static {
+    // Trait implementation needs to be repeated here as upcasting
+    // is stabilized in Rust 1.86+ and we barely missed the cutoff.
+    pub fn downcast_ref<T: CustomGate + 'static>(&self) -> Option<&T> {
+        (self.type_id() == TypeId::of::<T>()).then(|| unsafe { &*(self as *const _ as *const T) })
+    }
 }
 
 #[cfg(test)]
@@ -382,36 +225,93 @@ mod test {
     use crate::Qubit;
     use crate::circuit_data::CircuitData;
     use crate::custom_operations::CustomGate;
+    use crate::custom_operations::CustomInstruction;
+    use crate::custom_operations::CustomOperation;
     use crate::gate_matrix::H_GATE;
     use crate::operations::Operation;
     use crate::operations::Param;
     use crate::operations::StandardGate;
     use ndarray::aview2;
-    use num_complex::c64;
     use smallvec::smallvec;
-    use std::f64::consts::FRAC_1_SQRT_2;
+
     use std::f64::consts::PI;
 
     #[test]
     fn try_custom_h_gate() {
-        let h_matrix = [
-            [c64(FRAC_1_SQRT_2, 0.), c64(FRAC_1_SQRT_2, 0.)],
-            [c64(FRAC_1_SQRT_2, 0.), c64(-FRAC_1_SQRT_2, 0.)],
-        ];
-        let gate = CustomGate::new("H".into(), 1, 0)
-            .with_fixed_matrix(aview2(&h_matrix).to_owned())
-            .with_definition(
+        #[derive(Debug, Clone)]
+        struct CustomH;
+        impl Operation for CustomH {
+            fn name(&self) -> &str {
+                "h"
+            }
+
+            fn num_qubits(&self) -> u32 {
+                1
+            }
+
+            fn num_clbits(&self) -> u32 {
+                0
+            }
+
+            fn num_params(&self) -> u32 {
+                0
+            }
+
+            fn directive(&self) -> bool {
+                false
+            }
+        }
+
+        impl CustomOperation for CustomH {
+            fn clone_dyn(&self) -> Box<dyn CustomOperation> {
+                Box::new(self.clone())
+            }
+        }
+
+        impl CustomInstruction for CustomH {
+            fn label(&self) -> Option<&str> {
+                None
+            }
+
+            fn definition(&self) -> Option<CircuitData> {
                 CircuitData::from_standard_gates(
                     1,
                     [(StandardGate::H, smallvec![], smallvec![Qubit(0)])],
                     0.0.into(),
                 )
-                .expect("Circuit should work"),
-            );
+                .ok()
+            }
+
+            fn inverse(
+                &self,
+                _params: &[Param],
+            ) -> Option<(
+                crate::packed_instruction::PackedOperation,
+                smallvec::SmallVec<[Param; 3]>,
+            )> {
+                None
+            }
+        }
+
+        impl CustomGate for CustomH {
+            fn matrix(&self, _params: &[Param]) -> Option<ndarray::Array2<numpy::Complex64>> {
+                _params.is_empty().then_some(aview2(&H_GATE).to_owned())
+            }
+
+            fn num_ctrl_qubits(&self) -> u32 {
+                0
+            }
+        }
+
+        let gate: Box<dyn CustomGate> = Box::new(CustomH);
+        // Try downcasting
+        let gate = gate
+            .downcast_ref::<CustomH>()
+            .expect("Should downcast to an H gate");
 
         assert_eq!(
             gate.name(),
-            "H",
+            "h",
             "Gate names did not match, expected 'H' obtained '{}'",
             gate.name()
         );
@@ -448,7 +348,7 @@ mod test {
         assert_eq!(
             matrix_res, matrix_exp,
             "Gate matrix did not match, expected {:?} obtained '{:?}'",
-            matrix_res, matrix_exp
+            matrix_exp, matrix_res
         );
 
         let circuit = gate.definition().expect("Circuit should exist.");
