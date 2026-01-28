@@ -10,7 +10,7 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use std::any::{Any, TypeId};
+use std::{any::{Any, TypeId}, num::NonZero};
 
 use ndarray::Array2;
 use numpy::Complex64;
@@ -192,9 +192,15 @@ impl dyn CustomOperation + 'static {
 }
 
 pub trait CustomInstruction: CustomOperation {
-    fn label(&self) -> Option<&str>;
-    fn inverse(&self, params: &[Param]) -> Option<(PackedOperation, SmallVec<[Param; 3]>)>;
-    fn definition(&self) -> Option<CircuitData>;
+    fn label(&self) -> Option<&str> {
+        None
+    }
+    fn inverse(&self, _params: &[Param]) -> Option<(PackedOperation, SmallVec<[Param; 3]>)> {
+        None
+    }
+    fn definition(&self) -> Option<CircuitData> {
+        None
+    }
 }
 
 impl dyn CustomInstruction + 'static {
@@ -206,10 +212,14 @@ impl dyn CustomInstruction + 'static {
 }
 
 pub trait CustomGate: CustomInstruction {
-    fn matrix(&self, params: &[Param]) -> Option<Array2<Complex64>>;
-    fn num_ctrl_qubits(&self) -> u32;
+    fn matrix(&self, _params: &[Param]) -> Option<Array2<Complex64>> {
+        None
+    }
+    fn num_ctrl_qubits(&self) -> Option<NonZero<u32>> {
+        None
+    }
     fn is_controlled_gate(&self) -> bool {
-        self.num_ctrl_qubits() > 0
+        self.num_ctrl_qubits().is_some()
     }
 }
 impl dyn CustomGate + 'static {
@@ -269,10 +279,6 @@ mod test {
         }
 
         impl CustomInstruction for CustomH {
-            fn label(&self) -> Option<&str> {
-                None
-            }
-
             fn definition(&self) -> Option<CircuitData> {
                 CircuitData::from_standard_gates(
                     1,
@@ -281,25 +287,11 @@ mod test {
                 )
                 .ok()
             }
-
-            fn inverse(
-                &self,
-                _params: &[Param],
-            ) -> Option<(
-                crate::packed_instruction::PackedOperation,
-                smallvec::SmallVec<[Param; 3]>,
-            )> {
-                None
-            }
         }
 
         impl CustomGate for CustomH {
-            fn matrix(&self, _params: &[Param]) -> Option<ndarray::Array2<numpy::Complex64>> {
-                _params.is_empty().then_some(aview2(&H_GATE).to_owned())
-            }
-
-            fn num_ctrl_qubits(&self) -> u32 {
-                0
+            fn matrix(&self, params: &[Param]) -> Option<ndarray::Array2<numpy::Complex64>> {
+                params.is_empty().then_some(aview2(&H_GATE).to_owned())
             }
         }
 
@@ -339,8 +331,8 @@ mod test {
             matrix_res.as_ref().map(|mat| mat.view()),
             matrix_exp,
             "Gate matrix did not match, expected {:?} obtained '{:?}'",
+            matrix_exp,
             matrix_res,
-            matrix_exp
         );
 
         let matrix_res = gate.matrix(&[Param::Float(PI)]);
