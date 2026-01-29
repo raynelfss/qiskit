@@ -153,6 +153,7 @@ pub fn dag_to_circuit(
                     OperationRef::StandardInstruction(instruction) => instruction.into(),
                     OperationRef::Unitary(unitary) => unitary.clone().into(),
                     OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
+                    OperationRef::Opaque(_) | OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) | OperationRef::CustomOperation(_) => instr.op.clone() 
                 };
                 let mut instr = instr.clone();
                 instr.op = op;

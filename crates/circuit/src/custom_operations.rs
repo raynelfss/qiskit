@@ -10,7 +10,11 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use std::{any::{Any, TypeId}, num::NonZero};
+use std::{
+    any::{Any, TypeId},
+    fmt::Debug,
+    num::NonZero,
+};
 
 use ndarray::Array2;
 use numpy::Complex64;
@@ -22,7 +26,7 @@ use crate::{
     operations::{Operation, Param},
     packed_instruction::PackedOperation,
 };
-use pyo3::prelude::*;
+use pyo3::{exceptions::PyNotImplementedError, prelude::*, types::PyType};
 
 /// A gate instance that serves as a placeholder.
 /// It contains properties such as the number of bits and parameters, and an optional label.
@@ -181,8 +185,76 @@ pub enum OpaqueOperation {
     Instruction(OpaqueInstruction),
 }
 
-pub trait CustomOperation: Operation + Any {
+impl Operation for OpaqueOperation {
+    fn name(&self) -> &str {
+        match self {
+            OpaqueOperation::Gate(opaque_gate) => opaque_gate.name(),
+            OpaqueOperation::Instruction(opaque_instruction) => opaque_instruction.name(),
+        }
+    }
+
+    fn num_qubits(&self) -> u32 {
+        match self {
+            OpaqueOperation::Gate(opaque_gate) => opaque_gate.num_qubits(),
+            OpaqueOperation::Instruction(opaque_instruction) => opaque_instruction.num_qubits(),
+        }
+    }
+
+    fn num_clbits(&self) -> u32 {
+        match self {
+            OpaqueOperation::Gate(opaque_gate) => opaque_gate.num_clbits(),
+            OpaqueOperation::Instruction(opaque_instruction) => opaque_instruction.num_clbits(),
+        }
+    }
+
+    fn num_params(&self) -> u32 {
+        match self {
+            OpaqueOperation::Gate(opaque_gate) => opaque_gate.num_params(),
+            OpaqueOperation::Instruction(opaque_instruction) => opaque_instruction.num_params(),
+        }
+    }
+
+    fn directive(&self) -> bool {
+        match self {
+            OpaqueOperation::Gate(opaque_gate) => opaque_gate.directive(),
+            OpaqueOperation::Instruction(opaque_instruction) => opaque_instruction.directive(),
+        }
+    }
+}
+
+impl OpaqueOperation {
+    pub fn create_py_op(
+        &self,
+        py: Python,
+        params: Option<SmallVec<[Param; 3]>>,
+    ) -> PyResult<Py<PyAny>> {
+        match self {
+            OpaqueOperation::Gate(opaque_gate) => opaque_gate.create_py_op(py, params),
+            OpaqueOperation::Instruction(opaque_instruction) => {
+                opaque_instruction.create_py_op(py, params)
+            }
+        }
+    }
+}
+
+pub trait CustomOperation: Operation + Any + Debug {
     fn clone_dyn(&self) -> Box<dyn CustomOperation>;
+    fn create_py_op(
+        &self,
+        _py: Python,
+        _params: Option<SmallVec<[Param; 3]>>,
+    ) -> PyResult<Bound<PyAny>> {
+        Err(PyNotImplementedError::new_err(format!(
+            "There is currently no Python implementation for operation '{}'",
+            self.name()
+        )))
+    }
+    fn py_type(&self, _py: Python) -> PyResult<Bound<PyType>> {
+        Err(PyNotImplementedError::new_err(format!(
+            "There is currently no Python implementation for operation '{}'",
+            self.name()
+        )))
+    }
 }
 
 impl dyn CustomOperation + 'static {
@@ -198,7 +270,7 @@ pub trait CustomInstruction: CustomOperation {
     fn inverse(&self, _params: &[Param]) -> Option<(PackedOperation, SmallVec<[Param; 3]>)> {
         None
     }
-    fn definition(&self) -> Option<CircuitData> {
+    fn definition(&self, _params: &[Param]) -> Option<CircuitData> {
         None
     }
 }
@@ -222,6 +294,7 @@ pub trait CustomGate: CustomInstruction {
         self.num_ctrl_qubits().is_some()
     }
 }
+
 impl dyn CustomGate + 'static {
     // Trait implementation needs to be repeated here as upcasting
     // is stabilized in Rust 1.86+ and we barely missed the cutoff.
@@ -279,7 +352,7 @@ mod test {
         }
 
         impl CustomInstruction for CustomH {
-            fn definition(&self) -> Option<CircuitData> {
+            fn definition(&self, _params: &[Param]) -> Option<CircuitData> {
                 CircuitData::from_standard_gates(
                     1,
                     [(StandardGate::H, smallvec![], smallvec![Qubit(0)])],
@@ -343,7 +416,7 @@ mod test {
             matrix_exp, matrix_res
         );
 
-        let circuit = gate.definition().expect("Circuit should exist.");
+        let circuit = gate.definition(&[]).expect("Circuit should exist.");
         assert_eq!(
             circuit.__len__(),
             1,

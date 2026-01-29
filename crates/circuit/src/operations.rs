@@ -21,6 +21,7 @@ use std::{fmt, vec};
 use crate::bit::{ClassicalRegister, ShareableClbit};
 use crate::circuit_data::CircuitData;
 use crate::classical::expr;
+use crate::custom_operations::{CustomGate, CustomInstruction, CustomOperation, OpaqueOperation};
 use crate::duration::Duration;
 use crate::packed_instruction::PackedInstruction;
 use crate::parameter::parameter_expression::{
@@ -287,6 +288,10 @@ pub enum OperationRef<'a> {
     Operation(&'a PyInstruction),
     Unitary(&'a UnitaryGate),
     PauliProductMeasurement(&'a PauliProductMeasurement),
+    Opaque(&'a OpaqueOperation),
+    CustomGate(&'a dyn CustomGate),
+    CustomInstruction(&'a dyn CustomInstruction),
+    CustomOperation(&'a dyn CustomOperation),
 }
 
 impl Operation for OperationRef<'_> {
@@ -301,6 +306,10 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.name(),
             Self::Unitary(unitary) => unitary.name(),
             Self::PauliProductMeasurement(ppm) => ppm.name(),
+            Self::Opaque(opaque) => opaque.name(),
+            Self::CustomGate(custom) => custom.name(),
+            Self::CustomInstruction(custom) => custom.name(),
+            Self::CustomOperation(custom) => custom.name(),
         }
     }
     #[inline]
@@ -314,6 +323,10 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.num_qubits(),
             Self::Unitary(unitary) => unitary.num_qubits(),
             Self::PauliProductMeasurement(ppm) => ppm.num_qubits(),
+            Self::Opaque(opaque) => opaque.num_qubits(),
+            Self::CustomGate(custom) => custom.num_qubits(),
+            Self::CustomInstruction(custom) => custom.num_qubits(),
+            Self::CustomOperation(custom) => custom.num_qubits(),
         }
     }
     #[inline]
@@ -327,6 +340,10 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.num_clbits(),
             Self::Unitary(unitary) => unitary.num_clbits(),
             Self::PauliProductMeasurement(ppm) => ppm.num_clbits(),
+            Self::Opaque(opaque) => opaque.num_clbits(),
+            Self::CustomGate(custom) => custom.num_clbits(),
+            Self::CustomInstruction(custom) => custom.num_clbits(),
+            Self::CustomOperation(custom) => custom.num_clbits(),
         }
     }
     #[inline]
@@ -340,6 +357,10 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.num_params(),
             Self::Unitary(unitary) => unitary.num_params(),
             Self::PauliProductMeasurement(ppm) => ppm.num_params(),
+            Self::Opaque(opaque) => opaque.num_params(),
+            Self::CustomGate(custom) => custom.num_params(),
+            Self::CustomInstruction(custom) => custom.num_params(),
+            Self::CustomOperation(custom) => custom.num_params(),
         }
     }
     #[inline]
@@ -353,6 +374,10 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.directive(),
             Self::Unitary(unitary) => unitary.directive(),
             Self::PauliProductMeasurement(ppm) => ppm.directive(),
+            Self::Opaque(opaque) => opaque.directive(),
+            Self::CustomGate(custom) => custom.directive(),
+            Self::CustomInstruction(custom) => custom.directive(),
+            Self::CustomOperation(custom) => custom.directive(),
         }
     }
 }
