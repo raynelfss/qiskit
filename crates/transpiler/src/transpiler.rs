@@ -274,15 +274,13 @@ pub fn translation_stage(
         synthesis_state,
         target.into(),
     )?;
-    if let Some(out_dag) = run_basis_translator(dag, equiv_lib, 0, Some(target), None)? {
+    if let Some(out_dag) = run_basis_translator(dag, equiv_lib, 0, target)? {
         *dag = out_dag;
     }
     if !check_direction_target(dag, target)? {
         fix_direction_target(dag, target)?;
         if gates_missing_from_target(dag, target)? {
-            if let Some(out_dag) =
-                run_basis_translator(dag, equiv_lib, 0, Some(target), None).unwrap()
-            {
+            if let Some(out_dag) = run_basis_translator(dag, equiv_lib, 0, target).unwrap() {
                 *dag = out_dag;
             }
         }

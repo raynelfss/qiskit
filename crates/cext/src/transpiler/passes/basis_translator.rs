@@ -74,12 +74,11 @@ pub unsafe extern "C" fn qk_transpiler_pass_standalone_basis_translator(
 
     let mut equiv_lib = generate_standard_equivalence_library();
 
-    let result_dag =
-        match run_basis_translator(&dag, &mut equiv_lib, min_qubits, Some(target), None) {
-            Ok(Some(dag)) => dag,
-            Ok(None) => return,
-            Err(e) => panic!("{}", e),
-        };
+    let result_dag = match run_basis_translator(&dag, &mut equiv_lib, min_qubits, target) {
+        Ok(Some(dag)) => dag,
+        Ok(None) => return,
+        Err(e) => panic!("{}", e),
+    };
     let result_circ = dag_to_circuit(&result_dag, false).expect("DAG to Circuit conversion failed");
     *circ_from_ptr = result_circ;
 }

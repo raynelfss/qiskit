@@ -17,7 +17,7 @@ use compose_transforms::GateIdentifier;
 use basis_search::basis_search;
 use compose_transforms::compose_transforms;
 use errors::BasisTranslatorError;
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
 use pyo3::prelude::*;
 
@@ -52,39 +52,30 @@ type InstMap = AhashIndexMap<GateIdentifier, BasisTransformOut>;
 type ExtraInstructionMap<'a> = AhashIndexMap<&'a PhysicalQargs, InstMap>;
 type PhysicalQargs = SmallVec<[PhysicalQubit; 2]>;
 
-#[pyfunction(name = "base_run", signature = (dag, equiv_lib, min_qubits, target=None, target_basis=None))]
+#[pyfunction(name = "base_run", signature = (dag, equiv_lib, min_qubits, target))]
 fn py_run_basis_translator(
     dag: &DAGCircuit,
     equiv_lib: &mut EquivalenceLibrary,
     min_qubits: usize,
-    target: Option<&Target>,
-    target_basis: Option<HashSet<String>>,
+    target: &Target,
 ) -> PyResult<Option<DAGCircuit>> {
-    let target_basis_ref: Option<HashSet<&str>> = target_basis
-        .as_ref()
-        .map(|set| set.iter().map(|obj| obj.as_str()).collect());
-    run_basis_translator(dag, equiv_lib, min_qubits, target, target_basis_ref).map_err(|e| e.into())
+    run_basis_translator(dag, equiv_lib, min_qubits, target).map_err(|e| e.into())
 }
 
 pub fn run_basis_translator(
     dag: &DAGCircuit,
     equiv_lib: &mut EquivalenceLibrary,
     min_qubits: usize,
-    target: Option<&Target>,
-    target_basis: Option<HashSet<&str>>,
+    target: &Target,
 ) -> Result<Option<DAGCircuit>, BasisTranslatorError> {
-    if target_basis.is_none() && target.is_none() {
-        return Ok(None);
-    }
-
     let (non_global_operations, qargs_with_non_global_operation): (
-        Option<AhashIndexSet<&str>>,
+        AhashIndexSet<&str>,
         AhashIndexMap<Qargs, AhashIndexSet<&str>>,
-    ) = if let Some(target) = target {
+    ) = {
         let mut qargs_mapping: AhashIndexMap<Qargs, AhashIndexSet<&str>> = AhashIndexMap::default();
-        let global_set: AhashIndexSet<&str> =
+        let non_global_set: AhashIndexSet<&str> =
             AhashIndexSet::from_iter(target.get_non_global_operation_names(false));
-        for name in global_set.iter() {
+        for name in non_global_set.iter() {
             for qarg in target[name].keys().cloned() {
                 qargs_mapping
                     .entry(qarg)
@@ -94,9 +85,7 @@ pub fn run_basis_translator(
                     .or_insert(AhashIndexSet::from_iter([*name]));
             }
         }
-        (Some(global_set), qargs_mapping)
-    } else {
-        (None, AhashIndexMap::default())
+        (non_global_set, qargs_mapping)
     };
 
     let basic_instrs: AhashIndexSet<&str>;
@@ -104,36 +93,23 @@ pub fn run_basis_translator(
     let mut new_target_basis: AhashIndexSet<&str>;
     let mut qargs_local_source_basis: AhashIndexMap<PhysicalQargs, AhashIndexSet<GateIdentifier>> =
         AhashIndexMap::default();
-    if let Some(target) = target.as_ref() {
-        basic_instrs = ["barrier", "snapshot", "store"].into_iter().collect();
-        let non_global_str: AhashIndexSet<&str> =
-            if let Some(operations) = non_global_operations.as_ref() {
-                operations.clone()
-            } else {
-                AhashIndexSet::default()
-            };
-        let target_keys = target.keys().collect::<AhashIndexSet<_>>();
-        new_target_basis = target_keys.difference(&non_global_str).copied().collect();
-        extract_basis_target(
-            dag,
-            &mut source_basis,
-            &mut qargs_local_source_basis,
-            min_qubits,
-            &qargs_with_non_global_operation,
-            None,
-        );
-    } else {
-        basic_instrs = ["measure", "reset", "barrier", "snapshot", "delay", "store"]
-            .into_iter()
-            .collect();
-        source_basis = extract_basis(dag, min_qubits);
-        new_target_basis = target_basis
-            .as_ref()
-            .unwrap()
-            .into_iter()
-            .copied()
-            .collect();
-    }
+
+    basic_instrs = ["measure", "reset", "barrier", "snapshot", "delay", "store"]
+        .into_iter()
+        .collect();
+    let target_keys = target.keys().collect::<AhashIndexSet<_>>();
+    new_target_basis = target_keys
+        .difference(&non_global_operations)
+        .copied()
+        .collect();
+    extract_basis_target(
+        dag,
+        &mut source_basis,
+        &mut qargs_local_source_basis,
+        min_qubits,
+        &qargs_with_non_global_operation,
+        None,
+    );
     new_target_basis = new_target_basis.union(&basic_instrs).copied().collect();
     // If the source basis is a subset of the target basis and we have no circuit
     // instructions on qargs that have non-global operations there is nothing to
@@ -212,31 +188,6 @@ pub fn run_basis_translator(
         None,
     )?;
     Ok(Some(out_dag))
-}
-
-/// Method that extracts all gate instances identifiers from a DAGCircuit.
-fn extract_basis(circuit: &DAGCircuit, min_qubits: usize) -> AhashIndexSet<GateIdentifier> {
-    let mut basis = AhashIndexSet::default();
-    // Recurse for DAGCircuit
-    fn recurse_dag(
-        circuit: &DAGCircuit,
-        basis: &mut AhashIndexSet<GateIdentifier>,
-        min_qubits: usize,
-    ) {
-        for (_, operation) in circuit.op_nodes(true) {
-            if circuit.get_qargs(operation.qubits).len() >= min_qubits {
-                basis.insert((operation.op.name().to_string(), operation.op.num_qubits()));
-            }
-            if let Some(control_flow) = circuit.try_view_control_flow(operation) {
-                for block in control_flow.blocks() {
-                    recurse_dag(block, basis, min_qubits);
-                }
-            }
-        }
-    }
-
-    recurse_dag(circuit, &mut basis, min_qubits);
-    basis
 }
 
 /// Method that extracts a mapping of all the qargs in the local_source basis

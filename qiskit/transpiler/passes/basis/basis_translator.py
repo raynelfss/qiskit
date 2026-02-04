@@ -15,7 +15,10 @@
 
 import logging
 
+from qiskit.circuit.gate import Gate
+from qiskit.circuit.library.standard_gates import get_standard_gate_name_mapping
 from qiskit.transpiler.basepasses import TransformationPass
+from qiskit.transpiler.target import Target
 from qiskit._accelerate.basis_translator import base_run
 
 logger = logging.getLogger(__name__)
@@ -84,7 +87,7 @@ class BasisTranslator(TransformationPass):
     :ref:`custom_basis_gates` for details on adding custom equivalence rules.
     """
 
-    def __init__(self, equivalence_library, target_basis, target=None, min_qubits=0):
+    def __init__(self, equivalence_library, target_basis=None, target=None, min_qubits=0):
         """Initialize a BasisTranslator instance.
 
         Args:
@@ -117,12 +120,30 @@ class BasisTranslator(TransformationPass):
             DAGCircuit: translated circuit.
         """
 
+        # If no `target` nor `target_basis` arguments are passed, the
+        # pass has nothing else to do.
+        if self._target is None and self._target_basis is None:
+            return dag
+
+        # If the Target is not present, generate a Target based on
+        # `target_basis`, use opaque gates whenever a non-standard
+        # gate is found.
+        if self._target is None and self._target_basis is not None:
+            std_mapping = get_standard_gate_name_mapping()
+            custom_mapping = {
+                name: Gate(name, dag.num_qubits(), [])
+                for name in self._target_basis
+                if name not in std_mapping
+            }
+            self._target = Target.from_configuration(
+                self._target_basis, custom_name_mapping=custom_mapping
+            )
+
         out = base_run(
             dag,
             self._equiv_lib,
             self._min_qubits,
             self._target,
-            None if self._target_basis is None else set(self._target_basis),
         )
         # If Rust-space basis translation returns `None`, it's because the input DAG is already
         # suitable and it didn't need to modify anything.
