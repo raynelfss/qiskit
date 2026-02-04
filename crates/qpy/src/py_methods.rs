@@ -318,6 +318,18 @@ pub(crate) fn gate_class_name(op: &PackedOperation) -> PyResult<String> {
                 Ok(String::from(PAULI_PRODUCT_MEASUREMENT_GATE_CLASS_NAME))
             }
             OperationRef::ControlFlow(inst) => Ok(inst.name().to_string()),
+            OperationRef::Opaque(opaque_operation) => match opaque_operation {
+                // TODO: Modify to correctly represent operations.
+                qiskit_circuit::custom_operations::OpaqueOperation::Gate(_) => {
+                    Ok("Gate".to_string())
+                }
+                qiskit_circuit::custom_operations::OpaqueOperation::Instruction(_) => {
+                    Ok("Instruction".to_string())
+                }
+            },
+            OperationRef::CustomGate(_)
+            | OperationRef::CustomInstruction(_)
+            | OperationRef::CustomOperation(_) => Ok(Default::default()),
         }?;
         Ok(name)
     })
