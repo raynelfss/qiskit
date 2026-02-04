@@ -47,6 +47,7 @@ impl OpaqueGate {
                 num_params,
                 label: None,
                 directive: false,
+                definition: None,
             },
         }
     }
@@ -54,6 +55,16 @@ impl OpaqueGate {
     /// Creates an instance of [OpaqueGate] with a label
     pub fn with_label(mut self, label: String) -> Self {
         self.instruction.label.replace(label);
+        self
+    }
+
+    pub fn with_fixed_definition(mut self, definition: CircuitData) -> Self {
+        self.instruction = self.instruction.with_fixed_definition(definition);
+        self
+    }
+
+    pub fn with_parametric_definition(mut self, definition: CircuitData) -> Self {
+        self.instruction = self.instruction.with_parametric_definition(definition);
         self
     }
 
@@ -67,13 +78,35 @@ impl OpaqueGate {
         None
     }
 
+    pub fn definition(&self, params: &[Param]) -> Option<CircuitData> {
+        self.instruction.definition(params)
+    }
+
     pub fn create_py_op(
         &self,
         py: Python,
         params: Option<SmallVec<[Param; 3]>>,
     ) -> PyResult<Py<PyAny>> {
-        let gate = GATE.get(py);
-        gate.call1(py, (self.name(), self.num_qubits(), params, self.label()))
+        let gate_class = GATE.get(py);
+        let definition = if let Some(params) = params.as_deref() {
+            self.definition(params)
+        } else {
+            None
+        };
+        let gate = gate_class.call1(
+            py,
+            (
+                self.name(),
+                self.num_qubits(),
+                self.num_clbits(),
+                params.unwrap_or_default(),
+                self.label(),
+            ),
+        )?;
+        if let Some(definition) = definition {
+            gate.setattr(py, "definition", definition)?;
+        }
+        Ok(gate)
     }
 }
 
@@ -107,6 +140,7 @@ pub struct OpaqueInstruction {
     num_params: u32,
     label: Option<String>,
     directive: bool,
+    definition: Option<CircuitData>,
 }
 
 impl OpaqueInstruction {
@@ -124,6 +158,7 @@ impl OpaqueInstruction {
             num_params,
             label: None,
             directive,
+            definition: None,
         }
     }
 
@@ -136,13 +171,58 @@ impl OpaqueInstruction {
         self.label.as_deref()
     }
 
+    pub fn with_fixed_definition(mut self, definition: CircuitData) -> Self {
+        if self.num_params() != 0 {
+            panic!(
+                "Used a parametric circuit with different amount of free parameters than the instruction."
+            );
+        }
+        if !definition.parameters().is_empty() {
+            // TODO: Use Result.
+            panic!(
+                "Used a parametric circuit with free parameters for an instruction with no parameters."
+            );
+        }
+        self.definition.replace(definition);
+        self
+    }
+
+    pub fn with_parametric_definition(mut self, definition: CircuitData) -> Self {
+        if self.num_params() as usize != definition.parameters().len() {
+            panic!(
+                "Used a parametric circuit with free parameters for an instruction with no parameters."
+            );
+        }
+        self.definition.replace(definition);
+        self
+    }
+
+    pub fn definition(&self, params: &[Param]) -> Option<CircuitData> {
+        let definition = self.definition.as_ref()?;
+        if params.len() != definition.parameters().len() {
+            return None;
+        }
+        // Clone only after we have checked that this definition has enough
+        // free parameters.
+        let mut definition = definition.clone();
+        definition
+            .assign_parameters_from_slice(params)
+            .ok()
+            .map(|_| definition)
+    }
+
     pub fn create_py_op(
         &self,
         py: Python,
         params: Option<SmallVec<[Param; 3]>>,
     ) -> PyResult<Py<PyAny>> {
-        let gate = INSTRUCTION.get(py);
-        gate.call1(
+        let instruction_class = INSTRUCTION.get(py);
+        let definition = if let Some(params) = params.as_deref() {
+            self.definition(params)
+        } else {
+            None
+        };
+        let instruction = instruction_class.call1(
             py,
             (
                 self.name(),
@@ -151,7 +231,11 @@ impl OpaqueInstruction {
                 params.unwrap_or_default(),
                 self.label(),
             ),
-        )
+        )?;
+        if let Some(definition) = definition {
+            instruction.setattr(py, "definition", definition)?;
+        }
+        Ok(instruction)
     }
 }
 
@@ -183,6 +267,18 @@ impl Operation for OpaqueInstruction {
 pub enum OpaqueOperation {
     Gate(OpaqueGate),
     Instruction(OpaqueInstruction),
+}
+
+impl From<OpaqueGate> for OpaqueOperation {
+    fn from(value: OpaqueGate) -> Self {
+        Self::Gate(value)
+    }
+}
+
+impl From<OpaqueInstruction> for OpaqueOperation {
+    fn from(value: OpaqueInstruction) -> Self {
+        Self::Instruction(value)
+    }
 }
 
 impl Operation for OpaqueOperation {
@@ -235,9 +331,29 @@ impl OpaqueOperation {
             }
         }
     }
+
+    pub fn label(&self) -> Option<&str> {
+        match self {
+            OpaqueOperation::Gate(opaque_gate) => opaque_gate.label(),
+            OpaqueOperation::Instruction(opaque_instruction) => opaque_instruction.label(),
+        }
+    }
+
+    pub fn definition(&self, params: &[Param]) -> Option<CircuitData> {
+        match self {
+            OpaqueOperation::Gate(opaque_gate) => opaque_gate.definition(params),
+            OpaqueOperation::Instruction(opaque_instruction) => {
+                opaque_instruction.definition(params)
+            }
+        }
+    }
 }
 
 pub trait CustomOperation: Operation + Any + Debug {
+    /// Dynamically clones the operation object, preserving its type.
+    ///
+    /// This needs to be dynamically implemented due to the nature of
+    /// traits and them not being able to become an object.
     fn clone_dyn(&self) -> Box<dyn CustomOperation>;
     fn create_py_op(
         &self,
