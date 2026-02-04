@@ -540,7 +540,10 @@ fn replace_node(
                 OperationRef::StandardInstruction(instruction) => instruction.into(),
                 OperationRef::Unitary(unitary) => unitary.clone().into(),
                 OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
-                OperationRef::Opaque(_) | OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) | OperationRef::CustomOperation(_) => inner_node.op.clone(), 
+                OperationRef::Opaque(_)
+                | OperationRef::CustomGate(_)
+                | OperationRef::CustomInstruction(_)
+                | OperationRef::CustomOperation(_) => inner_node.op.clone(),
             };
             let new_params: Option<Parameters<_>> = inner_node.params.as_deref().cloned();
             dag.apply_operation_back(
@@ -613,7 +616,10 @@ fn replace_node(
                 OperationRef::StandardInstruction(instruction) => instruction.into(),
                 OperationRef::Unitary(unitary) => unitary.clone().into(),
                 OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
-                OperationRef::Opaque(_) | OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) | OperationRef::CustomOperation(_) => inner_node.op.clone(),
+                OperationRef::Opaque(_)
+                | OperationRef::CustomGate(_)
+                | OperationRef::CustomInstruction(_)
+                | OperationRef::CustomOperation(_) => inner_node.op.clone(),
             };
 
             let mut new_params: Option<Parameters<_>> = inner_node.params.as_deref().cloned();

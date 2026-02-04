@@ -13,18 +13,16 @@
 use super::errors::BasisTranslatorError;
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
-use pyo3::prelude::*;
+use qiskit_circuit::Qubit;
 use qiskit_circuit::bit::QuantumRegister;
 use qiskit_circuit::circuit_data::CircuitData;
-use qiskit_circuit::circuit_instruction::OperationFromPython;
-use qiskit_circuit::imports::GATE;
-use qiskit_circuit::instruction::{Instruction, Parameters};
+use qiskit_circuit::custom_operations::{OpaqueGate, OpaqueOperation};
+use qiskit_circuit::instruction::Parameters;
 use qiskit_circuit::operations::{StandardGate, StandardInstruction, get_standard_gate_names};
 use qiskit_circuit::packed_instruction::PackedOperation;
 use qiskit_circuit::parameter::parameter_expression::ParameterExpression;
 use qiskit_circuit::parameter::symbol_expr::Symbol;
 use qiskit_circuit::parameter_table::ParameterUuid;
-use qiskit_circuit::{NoBlocks, Qubit};
 use qiskit_circuit::{
     dag_circuit::DAGCircuit,
     operations::{Operation, Param},
@@ -53,7 +51,7 @@ pub(super) fn compose_transforms<'a>(
 
     for (gate_name, gate_num_qubits) in source_basis.iter().cloned() {
         let num_params = gate_param_counts[&(gate_name.clone(), gate_num_qubits)];
-        let mut placeholder_params: SmallVec<[Param; 3]> = (0..num_params as u32)
+        let placeholder_params: SmallVec<[Param; 3]> = (0..num_params as u32)
             .map(|idx| {
                 Param::ParameterExpression(
                     ParameterExpression::from_symbol(Symbol::new(&gate_name, None, Some(idx)))
@@ -73,14 +71,12 @@ pub(super) fn compose_transforms<'a>(
         let gate = if let Some(op) = name_to_packed_operation(&gate_name, gate_num_qubits) {
             op
         } else {
-            let extract_py = Python::attach(|py| -> PyResult<OperationFromPython<NoBlocks>> {
-                GATE.get_bound(py)
-                    .call1((&gate_name, gate_num_qubits, placeholder_params.as_ref()))?
-                    .extract()
-            })
-            .unwrap_or_else(|_| panic!("Error creating custom gate for entry {}", gate_name));
-            placeholder_params = extract_py.params_view().iter().cloned().collect();
-            extract_py.operation
+            OpaqueOperation::Gate(OpaqueGate::new(
+                gate_name.clone(),
+                gate_num_qubits,
+                placeholder_params.len() as u32,
+            ))
+            .into()
         };
         let qubits: Vec<Qubit> = (0..dag.num_qubits() as u32).map(Qubit).collect();
         dag.apply_operation_back(

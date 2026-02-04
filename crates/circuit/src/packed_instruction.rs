@@ -57,7 +57,7 @@ unsafe impl ::bytemuck::CheckedBitPattern for PackedOperationType {
     type Bits = u8;
 
     fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
-        *bits < 6
+        *bits < 10
     }
 }
 unsafe impl ::bytemuck::NoUninit for PackedOperationType {}
@@ -440,16 +440,22 @@ impl PackedOperation {
             }
             PackedOperationType::Opaque => OperationRef::Opaque(self.try_into().unwrap()),
             PackedOperationType::CustomGate => {
-                let gate: &Box<dyn CustomGate> = self.try_into().unwrap();
-                OperationRef::CustomGate(gate.as_ref())
+                let gate = TryInto::<&Box<dyn CustomGate>>::try_into(self)
+                    .unwrap()
+                    .as_ref();
+                OperationRef::CustomGate(gate)
             }
             PackedOperationType::CustomInstruction => {
-                let instruction: &Box<dyn CustomInstruction> = self.try_into().unwrap();
-                OperationRef::CustomInstruction(instruction.as_ref())
+                let instruction = TryInto::<&Box<dyn CustomInstruction>>::try_into(self)
+                    .unwrap()
+                    .as_ref();
+                OperationRef::CustomInstruction(instruction)
             }
             PackedOperationType::CustomOperation => {
-                let operation: &Box<dyn CustomOperation> = self.try_into().unwrap();
-                OperationRef::CustomOperation(operation.as_ref())
+                let operation = TryInto::<&Box<dyn CustomOperation>>::try_into(self)
+                    .unwrap()
+                    .as_ref();
+                OperationRef::CustomOperation(operation)
             }
         }
     }
@@ -459,15 +465,17 @@ impl PackedOperation {
     /// This can be either a [StandardGate] or a [PyGate].
     #[inline]
     pub fn is_gate(&self) -> bool {
-        if matches!(self.discriminant(), PackedOperationType::StandardGate) {
-            true
-        } else if matches!(self.discriminant(), PackedOperationType::CustomGate) {
-            true
-        } else if matches!(self.discriminant(), PackedOperationType::PyOperationTypes) {
-            let op: &PyOperationTypes = self.try_into().unwrap();
-            matches!(op, PyOperationTypes::Gate(_))
-        } else {
-            false
+        match self.discriminant() {
+            PackedOperationType::StandardGate | PackedOperationType::CustomGate => true,
+            PackedOperationType::Opaque => {
+                let opaque: &OpaqueOperation = self.try_into().unwrap();
+                matches!(opaque, OpaqueOperation::Gate(_))
+            }
+            PackedOperationType::PyOperationTypes => {
+                let op: &PyOperationTypes = self.try_into().unwrap();
+                matches!(op, PyOperationTypes::Gate(_))
+            }
+            _ => false,
         }
     }
 

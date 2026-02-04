@@ -7882,7 +7882,10 @@ impl DAGCircuit {
                         OperationRef::StandardInstruction(instruction) => instruction.into(),
                         OperationRef::Unitary(unitary) => unitary.clone().into(),
                         OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
-                        OperationRef::Opaque(_) | OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) | OperationRef::CustomOperation(_) => instr.op.clone() 
+                        OperationRef::Opaque(_)
+                        | OperationRef::CustomGate(_)
+                        | OperationRef::CustomInstruction(_)
+                        | OperationRef::CustomOperation(_) => instr.op.clone(),
                     }
                 } else {
                     instr.op.clone()
