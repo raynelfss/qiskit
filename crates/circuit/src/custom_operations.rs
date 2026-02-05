@@ -349,12 +349,7 @@ impl OpaqueOperation {
     }
 }
 
-pub trait CustomOperation: Operation + Any + Debug {
-    /// Dynamically clones the operation object, preserving its type.
-    ///
-    /// This needs to be dynamically implemented due to the nature of
-    /// traits and them not being able to become an object.
-    fn clone_dyn(&self) -> Box<dyn CustomOperation>;
+pub trait BaseOperation: Operation + Any + Debug {
     fn create_py_op(
         &self,
         _py: Python,
@@ -373,22 +368,32 @@ pub trait CustomOperation: Operation + Any + Debug {
     }
 }
 
+pub trait CustomOperation: BaseOperation {
+    fn clone_dyn(&self) -> Box<dyn CustomInstruction>;
+}
+
 impl dyn CustomOperation + 'static {
     pub fn downcast_ref<T: CustomOperation + 'static>(&self) -> Option<&T> {
         (self.type_id() == TypeId::of::<T>()).then(|| unsafe { &*(self as *const _ as *const T) })
     }
 }
 
-pub trait CustomInstruction: CustomOperation {
-    fn label(&self) -> Option<&str> {
-        None
-    }
-    fn inverse(&self, _params: &[Param]) -> Option<(PackedOperation, SmallVec<[Param; 3]>)> {
-        None
-    }
-    fn definition(&self, _params: &[Param]) -> Option<CircuitData> {
-        None
-    }
+macro_rules! instruction_methods {
+    () => {
+        fn label(&self) -> Option<&str> {
+            None
+        }
+        fn inverse(&self, _params: &[Param]) -> Option<(PackedOperation, SmallVec<[Param; 3]>)> {
+            None
+        }
+        fn definition(&self, _params: &[Param]) -> Option<CircuitData> {
+            None
+        }
+    };
+}
+pub trait CustomInstruction: Operation + Debug + Any + BaseOperation {
+    instruction_methods! {}
+    fn clone_dyn(&self) -> Box<dyn CustomInstruction>;
 }
 
 impl dyn CustomInstruction + 'static {
@@ -399,7 +404,9 @@ impl dyn CustomInstruction + 'static {
     }
 }
 
-pub trait CustomGate: CustomInstruction {
+pub trait CustomGate: Operation + Debug + Any + BaseOperation {
+    instruction_methods! {}
+    fn clone_dyn(&self) -> Box<dyn CustomGate>;
     fn matrix(&self, _params: &[Param]) -> Option<Array2<Complex64>> {
         None
     }
@@ -423,11 +430,11 @@ impl dyn CustomGate + 'static {
 mod test {
     use crate::Qubit;
     use crate::circuit_data::CircuitData;
+    use crate::custom_operations::BaseOperation;
     use crate::custom_operations::CustomGate;
-    use crate::custom_operations::CustomInstruction;
-    use crate::custom_operations::CustomOperation;
     use crate::gate_matrix::H_GATE;
     use crate::operations::Operation;
+    use crate::operations::OperationRef;
     use crate::operations::Param;
     use crate::operations::StandardGate;
     use ndarray::aview2;
@@ -435,56 +442,54 @@ mod test {
 
     use std::f64::consts::PI;
 
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    struct CustomH;
+    impl Operation for CustomH {
+        fn name(&self) -> &str {
+            "h"
+        }
+
+        fn num_qubits(&self) -> u32 {
+            1
+        }
+
+        fn num_clbits(&self) -> u32 {
+            0
+        }
+
+        fn num_params(&self) -> u32 {
+            0
+        }
+
+        fn directive(&self) -> bool {
+            false
+        }
+    }
+
+    impl BaseOperation for CustomH {}
+    impl CustomGate for CustomH {
+        fn definition(&self, _params: &[Param]) -> Option<CircuitData> {
+            CircuitData::from_standard_gates(
+                1,
+                [(StandardGate::H, smallvec![], smallvec![Qubit(0)])],
+                0.0.into(),
+            )
+            .ok()
+        }
+
+        fn matrix(&self, params: &[Param]) -> Option<ndarray::Array2<numpy::Complex64>> {
+            params.is_empty().then_some(aview2(&H_GATE).to_owned())
+        }
+
+        fn clone_dyn(&self) -> Box<dyn CustomGate> {
+            Box::new(self.clone())
+        }
+    }
+
     #[test]
     fn try_custom_h_gate() {
-        #[derive(Debug, Clone)]
-        struct CustomH;
-        impl Operation for CustomH {
-            fn name(&self) -> &str {
-                "h"
-            }
-
-            fn num_qubits(&self) -> u32 {
-                1
-            }
-
-            fn num_clbits(&self) -> u32 {
-                0
-            }
-
-            fn num_params(&self) -> u32 {
-                0
-            }
-
-            fn directive(&self) -> bool {
-                false
-            }
-        }
-
-        impl CustomOperation for CustomH {
-            fn clone_dyn(&self) -> Box<dyn CustomOperation> {
-                Box::new(self.clone())
-            }
-        }
-
-        impl CustomInstruction for CustomH {
-            fn definition(&self, _params: &[Param]) -> Option<CircuitData> {
-                CircuitData::from_standard_gates(
-                    1,
-                    [(StandardGate::H, smallvec![], smallvec![Qubit(0)])],
-                    0.0.into(),
-                )
-                .ok()
-            }
-        }
-
-        impl CustomGate for CustomH {
-            fn matrix(&self, params: &[Param]) -> Option<ndarray::Array2<numpy::Complex64>> {
-                params.is_empty().then_some(aview2(&H_GATE).to_owned())
-            }
-        }
-
         let gate: Box<dyn CustomGate> = Box::new(CustomH);
+
         // Try downcasting
         let gate = gate
             .downcast_ref::<CustomH>()
@@ -549,5 +554,31 @@ mod test {
             hgate.op.standard_gate(),
             StandardGate::H
         );
+    }
+
+    #[test]
+    fn try_add_to_circuit() {
+        let mut circuit = CircuitData::with_capacity(1, 0, 1, 0.0.into())
+            .expect("Circuit with small capacity should be built.");
+
+        let gate: Box<dyn CustomGate> = Box::new(CustomH);
+
+        // Try downcasting
+        circuit
+            .push_packed_operation(gate.clone_dyn().into(), None, &[Qubit(0)], &[])
+            .expect("Instruction should be added to the circuit.");
+
+        // Retrieve operation
+        let retrieved_gate = &circuit.data()[0];
+
+        let OperationRef::CustomGate(gate_as_h) = retrieved_gate.op.view() else {
+            panic!("Gate should be a custom gate of type CustomH");
+        };
+
+        let Some(downcast_gate) = gate_as_h.downcast_ref::<CustomH>() else {
+            panic!("Gate should be a custom gate of type CustomH");
+        };
+
+        assert_eq!(gate.downcast_ref::<CustomH>(), Some(downcast_gate))
     }
 }
