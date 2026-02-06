@@ -3389,3 +3389,131 @@ impl PartialEq for PauliProductMeasurement {
 }
 
 impl Eq for PauliProductMeasurement {}
+
+#[derive(Debug)]
+#[repr(align(8))]
+pub enum NativeOperation {
+    Operation(Box<dyn CustomOperation>),
+    Instruction(Box<dyn CustomInstruction>),
+    Gate(Box<dyn CustomGate>),
+}
+
+impl NativeOperation {
+    pub fn from_gate<T>(gate: T) -> Self
+    where
+        T: CustomGate,
+    {
+        let boxed: Box<dyn CustomGate> = Box::new(gate);
+        Self::Gate(boxed)
+    }
+
+    pub fn from_instruction<T>(instruction: T) -> Self
+    where
+        T: CustomInstruction,
+    {
+        let boxed: Box<dyn CustomInstruction> = Box::new(instruction);
+        Self::Instruction(boxed)
+    }
+
+    pub fn from_operation<T>(operation: T) -> Self
+    where
+        T: CustomOperation,
+    {
+        let boxed: Box<dyn CustomOperation> = Box::new(operation);
+        Self::Operation(boxed)
+    }
+
+    pub fn from_gate_ref<T>(gate: &T) -> Self
+    where
+        T: CustomGate + ?Sized,
+    {
+        Self::Gate(gate.clone_dyn())
+    }
+
+    pub fn from_instruction_ref<T>(instruction: &T) -> Self
+    where
+        T: CustomInstruction + ?Sized,
+    {
+        Self::Instruction(instruction.clone_dyn())
+    }
+
+    pub fn from_operation_ref<T>(operation: &T) -> Self
+    where
+        T: CustomOperation + ?Sized,
+    {
+        Self::Operation(operation.clone_dyn())
+    }
+
+    pub fn downcast_gate<T: CustomGate>(&self) -> Option<&T> {
+        let NativeOperation::Gate(gate) = self else {
+            return None;
+        };
+        gate.downcast_ref()
+    }
+
+    pub fn downcast_instruction<T: CustomInstruction>(&self) -> Option<&T> {
+        let NativeOperation::Instruction(instruction) = self else {
+            return None;
+        };
+        instruction.downcast_ref()
+    }
+
+    pub fn downcast_operation<T: CustomOperation>(&self) -> Option<&T> {
+        let NativeOperation::Operation(operation) = self else {
+            return None;
+        };
+        operation.downcast_ref()
+    }
+}
+
+impl Operation for NativeOperation {
+    fn name(&self) -> &str {
+        match self {
+            NativeOperation::Operation(custom_operation) => custom_operation.name(),
+            NativeOperation::Instruction(custom_instruction) => custom_instruction.name(),
+            NativeOperation::Gate(custom_gate) => custom_gate.name(),
+        }
+    }
+
+    fn num_qubits(&self) -> u32 {
+        match self {
+            NativeOperation::Operation(custom_operation) => custom_operation.num_qubits(),
+            NativeOperation::Instruction(custom_instruction) => custom_instruction.num_qubits(),
+            NativeOperation::Gate(custom_gate) => custom_gate.num_qubits(),
+        }
+    }
+
+    fn num_clbits(&self) -> u32 {
+        match self {
+            NativeOperation::Operation(custom_operation) => custom_operation.num_clbits(),
+            NativeOperation::Instruction(custom_instruction) => custom_instruction.num_clbits(),
+            NativeOperation::Gate(custom_gate) => custom_gate.num_clbits(),
+        }
+    }
+
+    fn num_params(&self) -> u32 {
+        match self {
+            NativeOperation::Operation(custom_operation) => custom_operation.num_params(),
+            NativeOperation::Instruction(custom_instruction) => custom_instruction.num_params(),
+            NativeOperation::Gate(custom_gate) => custom_gate.num_params(),
+        }
+    }
+
+    fn directive(&self) -> bool {
+        match self {
+            NativeOperation::Operation(custom_operation) => custom_operation.directive(),
+            NativeOperation::Instruction(custom_instruction) => custom_instruction.directive(),
+            NativeOperation::Gate(custom_gate) => custom_gate.directive(),
+        }
+    }
+}
+
+impl Clone for NativeOperation {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Operation(arg0) => Self::Operation(arg0.clone_dyn()),
+            Self::Instruction(arg0) => Self::Instruction(arg0.clone_dyn()),
+            Self::Gate(arg0) => Self::Gate(arg0.clone_dyn()),
+        }
+    }
+}

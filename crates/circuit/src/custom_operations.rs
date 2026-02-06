@@ -369,7 +369,7 @@ pub trait BaseOperation: Operation + Any + Debug {
 }
 
 pub trait CustomOperation: BaseOperation {
-    fn clone_dyn(&self) -> Box<dyn CustomInstruction>;
+    fn clone_dyn(&self) -> Box<dyn CustomOperation>;
 }
 
 impl dyn CustomOperation + 'static {
@@ -433,6 +433,7 @@ mod test {
     use crate::custom_operations::BaseOperation;
     use crate::custom_operations::CustomGate;
     use crate::gate_matrix::H_GATE;
+    use crate::operations::NativeOperation;
     use crate::operations::Operation;
     use crate::operations::OperationRef;
     use crate::operations::Param;
@@ -561,11 +562,11 @@ mod test {
         let mut circuit = CircuitData::with_capacity(1, 0, 1, 0.0.into())
             .expect("Circuit with small capacity should be built.");
 
-        let gate: Box<dyn CustomGate> = Box::new(CustomH);
+        let gate = NativeOperation::from_gate(CustomH);
 
         // Try downcasting
         circuit
-            .push_packed_operation(gate.clone_dyn().into(), None, &[Qubit(0)], &[])
+            .push_packed_operation(gate.clone().into(), None, &[Qubit(0)], &[])
             .expect("Instruction should be added to the circuit.");
 
         // Retrieve operation
@@ -579,6 +580,6 @@ mod test {
             panic!("Gate should be a custom gate of type CustomH");
         };
 
-        assert_eq!(gate.downcast_ref::<CustomH>(), Some(downcast_gate))
+        assert_eq!(gate.downcast_gate::<CustomH>(), Some(downcast_gate))
     }
 }

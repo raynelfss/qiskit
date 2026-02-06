@@ -11,7 +11,7 @@
 // that they have been altered from the originals.
 
 use crate::circuit_data::CircuitData;
-use crate::custom_operations::{CustomGate, CustomInstruction, CustomOperation, OpaqueOperation};
+use crate::custom_operations::OpaqueOperation;
 use crate::imports::{
     BARRIER, BOX_OP, BREAK_LOOP_OP, CONTINUE_LOOP_OP, DELAY, FOR_LOOP_OP, GATE, IF_ELSE_OP,
     INSTRUCTION, MEASURE, PAULI_PRODUCT_MEASUREMENT, RESET, SWITCH_CASE_OP, UNITARY_GATE,
@@ -19,6 +19,7 @@ use crate::imports::{
 };
 use crate::instruction::Parameters;
 use crate::interner::Interned;
+use crate::operations::NativeOperation;
 use crate::operations::{
     ControlFlow, ControlFlowInstruction, Operation, OperationRef, Param, PauliProductMeasurement,
     PyOperationTypes, PythonOperation, StandardGate, StandardInstruction, UnitaryGate,
@@ -48,16 +49,14 @@ enum PackedOperationType {
     PauliProductMeasurement = 4,
     ControlFlow = 5,
     Opaque = 6,
-    CustomGate = 7,
-    CustomInstruction = 8,
-    CustomOperation = 9,
+    Native = 7,
 }
 
 unsafe impl ::bytemuck::CheckedBitPattern for PackedOperationType {
     type Bits = u8;
 
     fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
-        *bits < 10
+        *bits < 8
     }
 }
 unsafe impl ::bytemuck::NoUninit for PackedOperationType {}
@@ -260,9 +259,8 @@ mod standard_instruction {
 
 /// A private module to encapsulate the encoding of pointer types.
 mod pointer {
-    use crate::custom_operations::{
-        CustomGate, CustomInstruction, CustomOperation, OpaqueOperation,
-    };
+    use crate::custom_operations::OpaqueOperation;
+    use crate::operations::NativeOperation;
     use crate::operations::{
         ControlFlowInstruction, PauliProductMeasurement, PyOperationTypes, UnitaryGate,
     };
@@ -352,15 +350,7 @@ mod pointer {
     );
     impl_packable_pointer!(ControlFlowInstruction, PackedOperationType::ControlFlow);
     impl_packable_pointer!(OpaqueOperation, PackedOperationType::Opaque);
-    impl_packable_pointer!(Box<dyn CustomGate>, PackedOperationType::CustomGate);
-    impl_packable_pointer!(
-        Box<dyn CustomInstruction>,
-        PackedOperationType::CustomInstruction
-    );
-    impl_packable_pointer!(
-        Box<dyn CustomOperation>,
-        PackedOperationType::CustomOperation
-    );
+    impl_packable_pointer!(NativeOperation, PackedOperationType::Native);
 }
 
 impl PackedOperation {
@@ -439,23 +429,17 @@ impl PackedOperation {
                 OperationRef::PauliProductMeasurement(self.try_into().unwrap())
             }
             PackedOperationType::Opaque => OperationRef::Opaque(self.try_into().unwrap()),
-            PackedOperationType::CustomGate => {
-                let gate = TryInto::<&Box<dyn CustomGate>>::try_into(self)
-                    .unwrap()
-                    .as_ref();
-                OperationRef::CustomGate(gate)
-            }
-            PackedOperationType::CustomInstruction => {
-                let instruction = TryInto::<&Box<dyn CustomInstruction>>::try_into(self)
-                    .unwrap()
-                    .as_ref();
-                OperationRef::CustomInstruction(instruction)
-            }
-            PackedOperationType::CustomOperation => {
-                let operation = TryInto::<&Box<dyn CustomOperation>>::try_into(self)
-                    .unwrap()
-                    .as_ref();
-                OperationRef::CustomOperation(operation)
+            PackedOperationType::Native => {
+                let native: &NativeOperation = self.try_into().unwrap();
+                match native {
+                    NativeOperation::Gate(gate) => OperationRef::CustomGate(gate.as_ref()),
+                    NativeOperation::Instruction(instruction) => {
+                        OperationRef::CustomInstruction(instruction.as_ref())
+                    }
+                    NativeOperation::Operation(operation) => {
+                        OperationRef::CustomOperation(operation.as_ref())
+                    }
+                }
             }
         }
     }
@@ -466,7 +450,11 @@ impl PackedOperation {
     #[inline]
     pub fn is_gate(&self) -> bool {
         match self.discriminant() {
-            PackedOperationType::StandardGate | PackedOperationType::CustomGate => true,
+            PackedOperationType::StandardGate => true,
+            PackedOperationType::Native => {
+                let opaque: &NativeOperation = self.try_into().unwrap();
+                matches!(opaque, NativeOperation::Gate(_))
+            }
             PackedOperationType::Opaque => {
                 let opaque: &OpaqueOperation = self.try_into().unwrap();
                 matches!(opaque, OpaqueOperation::Gate(_))
@@ -701,12 +689,14 @@ impl Clone for PackedOperation {
             OperationRef::Unitary(unitary) => Self::from_unitary(Box::new(unitary.clone())),
             OperationRef::PauliProductMeasurement(ppm) => Self::from_ppm(Box::new(ppm.clone())),
             OperationRef::Opaque(opaque_operation) => Self::from(opaque_operation.clone()),
-            OperationRef::CustomGate(custom_gate) => Self::from(custom_gate.clone_dyn()),
+            OperationRef::CustomGate(custom_gate) => {
+                Self::from(NativeOperation::from_gate_ref(custom_gate))
+            }
             OperationRef::CustomInstruction(custom_instruction) => {
-                Self::from(custom_instruction.clone_dyn())
+                Self::from(NativeOperation::from_instruction_ref(custom_instruction))
             }
             OperationRef::CustomOperation(custom_operation) => {
-                Self::from(custom_operation.clone_dyn())
+                Self::from(NativeOperation::from_operation_ref(custom_operation))
             }
         }
     }
@@ -724,11 +714,7 @@ impl Drop for PackedOperation {
             }
             PackedOperationType::ControlFlow => ControlFlowInstruction::drop_packed(self),
             PackedOperationType::Opaque => OpaqueOperation::drop_packed(self),
-            PackedOperationType::CustomGate => Box::<dyn CustomGate>::drop_packed(self),
-            PackedOperationType::CustomInstruction => {
-                Box::<dyn CustomInstruction>::drop_packed(self)
-            }
-            PackedOperationType::CustomOperation => Box::<dyn CustomOperation>::drop_packed(self),
+            PackedOperationType::Native => NativeOperation::drop_packed(self),
         }
     }
 }
