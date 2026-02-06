@@ -66,3 +66,25 @@ class Operation(ABC):
     def num_clbits(self):
         """Number of classical bits."""
         raise NotImplementedError
+
+
+class RustOperation(Operation):
+    _native_operation: Operation | None = None
+
+    def __init__(self, native_op, params: list):
+        self._native_operation = native_op
+
+    @property
+    def name(self):
+        """Unique string identifier for operation type."""
+        return self._native_operation.name
+
+    @property
+    def num_qubits(self):
+        """Number of qubits."""
+        return self._native_operation.num_qubits
+
+    @property
+    def num_clbits(self):
+        """Number of classical bits."""
+        return self._native_operation.num_clbits

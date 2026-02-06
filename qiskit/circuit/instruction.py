@@ -561,3 +561,18 @@ class Instruction(Operation):
                 if x != y:
                     return False
         return True
+
+
+class RustInstruction(Instruction):
+    _native_instrucion: Instruction | None = None
+
+    def __init__(self, native_inst, params: list):
+        self._native_instrucion = native_inst
+        super().__init__(
+            self._native_instrucion.name,
+            self._native_instrucion.num_qubits,
+            self._native_instrucion.num_clbits,
+            params,
+            self._native_instrucion.label,
+        )
+        self.definition = self._native_instrucion.definition

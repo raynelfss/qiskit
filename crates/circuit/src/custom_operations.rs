@@ -350,17 +350,17 @@ impl OpaqueOperation {
 }
 
 pub trait BaseOperation: Operation + Any + Debug {
-    fn create_py_op(
-        &self,
-        _py: Python,
+    fn create_py_op<'py>(
+        &'py self,
+        _py: Python<'py>,
         _params: Option<SmallVec<[Param; 3]>>,
-    ) -> PyResult<Bound<PyAny>> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         Err(PyNotImplementedError::new_err(format!(
             "There is currently no Python implementation for operation '{}'",
             self.name()
         )))
     }
-    fn py_type(&self, _py: Python) -> PyResult<Bound<PyType>> {
+    fn py_type<'py>(&self, _py: Python<'py>) -> PyResult<Bound<'py, PyType>> {
         Err(PyNotImplementedError::new_err(format!(
             "There is currently no Python implementation for operation '{}'",
             self.name()
@@ -433,15 +433,23 @@ mod test {
     use crate::custom_operations::BaseOperation;
     use crate::custom_operations::CustomGate;
     use crate::gate_matrix::H_GATE;
+    use crate::gate_matrix::rx_gate;
+    use crate::imports::QUANTUM_CIRCUIT;
+    use crate::imports::RUST_GATE;
     use crate::operations::NativeOperation;
     use crate::operations::Operation;
     use crate::operations::OperationRef;
     use crate::operations::Param;
     use crate::operations::StandardGate;
     use ndarray::aview2;
+    use numpy::IntoPyArray;
+    use pyo3::PyTypeInfo;
+    use pyo3::prelude::*;
+    use smallvec::SmallVec;
     use smallvec::smallvec;
 
     use std::f64::consts::PI;
+    use std::sync::Arc;
 
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
     struct CustomH;
@@ -484,6 +492,146 @@ mod test {
 
         fn clone_dyn(&self) -> Box<dyn CustomGate> {
             Box::new(self.clone())
+        }
+    }
+
+    // Py Test
+    #[derive(Debug, Clone)]
+    pub struct CustomRX;
+
+    impl Operation for CustomRX {
+        fn name(&self) -> &str {
+            "custom_rx"
+        }
+
+        fn num_qubits(&self) -> u32 {
+            1
+        }
+
+        fn num_clbits(&self) -> u32 {
+            0
+        }
+
+        fn num_params(&self) -> u32 {
+            1
+        }
+
+        fn directive(&self) -> bool {
+            false
+        }
+    }
+
+    impl BaseOperation for CustomRX {
+        fn create_py_op<'py>(
+            &'py self,
+            py: Python<'py>,
+            params: Option<SmallVec<[Param; 3]>>,
+        ) -> PyResult<Bound<'py, PyAny>> {
+            let py_class = PyCustomRX {
+                inner: self.clone().into(),
+                parameters: params,
+            };
+            let custom_gate_inst = RUST_GATE.get_bound(py);
+            custom_gate_inst.call1((py_class,))
+        }
+
+        fn py_type<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyType>> {
+            Ok(PyCustomRX::type_object(py))
+        }
+    }
+
+    impl CustomGate for CustomRX {
+        fn clone_dyn(&self) -> Box<dyn CustomGate> {
+            Box::new(self.clone())
+        }
+        fn definition(&self, params: &[Param]) -> Option<CircuitData> {
+            (params.len() == 1).then_some(
+                CircuitData::from_standard_gates(
+                    1,
+                    [(
+                        StandardGate::RX,
+                        smallvec![params[0].clone()],
+                        smallvec![Qubit(0)],
+                    )],
+                    0.0.into(),
+                )
+                .expect("Circuit should be built"),
+            )
+        }
+
+        fn matrix(&self, params: &[Param]) -> Option<ndarray::Array2<numpy::Complex64>> {
+            if params.len() == 1 {
+                let Param::Float(param) = params[0] else {
+                    return None;
+                };
+                Some(aview2(&rx_gate(param)).to_owned())
+            } else {
+                None
+            }
+        }
+    }
+
+    #[pyclass(name = "CustomRX")]
+    #[derive(Debug, Clone)]
+    pub struct PyCustomRX {
+        inner: Arc<CustomRX>,
+        parameters: Option<SmallVec<[Param; 3]>>,
+    }
+
+    #[pymethods]
+    impl PyCustomRX {
+        #[getter]
+        fn name(&self) -> &str {
+            self.inner.name()
+        }
+
+        #[getter]
+        fn num_qubits(&self) -> u32 {
+            self.inner.num_qubits()
+        }
+
+        #[getter]
+        fn num_clbits(&self) -> u32 {
+            self.inner.num_clbits()
+        }
+
+        #[getter]
+        fn num_params(&self) -> u32 {
+            self.inner.num_params()
+        }
+
+        #[getter]
+        fn directive(&self) -> bool {
+            self.inner.directive()
+        }
+
+        #[getter]
+        fn label(&self) -> Option<&str> {
+            self.inner.label()
+        }
+
+        #[getter]
+        fn params(&self) -> Option<SmallVec<[Param; 3]>> {
+            self.parameters.clone()
+        }
+
+        #[getter]
+        fn definition<'py>(&'py self, py: Python<'py>) -> Option<Bound<'py, PyAny>> {
+            let params = self.parameters.as_deref().unwrap_or_default();
+            let circ_class = QUANTUM_CIRCUIT.get_bound(py);
+            self.inner
+                .definition(params)
+                .map(|circ| circ_class.call_method1("_from_circuit_data", (circ,)).ok())?
+        }
+
+        fn __array__<'py>(&'py self, dtype: Bound<'py, PyAny>) -> Option<Bound<'py, PyAny>> {
+            let py = dtype.py();
+            let params = self.parameters.as_deref().unwrap_or_default();
+            if let Some(matrix) = self.inner.matrix(params) {
+                Some(matrix.into_pyarray(py).into_any())
+            } else {
+                None
+            }
         }
     }
 
@@ -581,5 +729,51 @@ mod test {
         };
 
         assert_eq!(gate.downcast_gate::<CustomH>(), Some(downcast_gate))
+    }
+
+    // #[cfg(all(not(miri), test))]
+    #[test]
+    #[cfg(not(miri))]
+    fn try_python_custom_gate() {
+        let mut circuit = CircuitData::with_capacity(1, 0, 1, 0.0.into())
+            .expect("Circuit with small capacity should be built.");
+
+        let gate = NativeOperation::from_gate(CustomRX);
+
+        // Try downcasting
+        circuit
+            .push_packed_operation(
+                gate.clone().into(),
+                Some(crate::instruction::Parameters::Params(smallvec![
+                    3.14.into()
+                ])),
+                &[Qubit(0)],
+                &[],
+            )
+            .expect("Instruction should be added to the circuit.");
+
+        // Retrieve operation
+        let retrieved_gate = &circuit.data()[0];
+
+        let OperationRef::CustomGate(gate_as_rx) = retrieved_gate.op.view() else {
+            panic!("Gate should be a custom gate of type CustomH");
+        };
+
+        if gate_as_rx.downcast_ref::<CustomH>().is_some() {
+            panic!("Gate should not be a custom gate of type CustomH");
+        };
+
+        let Some(_) = gate_as_rx.downcast_ref::<CustomRX>() else {
+            panic!("Gate should be a custom gate of type CustomRX");
+        };
+
+        // Try Python:
+        Python::attach(|py| -> PyResult<()> {
+            let unpacked_operation = circuit.unpack_py_op(py, retrieved_gate)?.into_bound(py);
+            println!("{}", unpacked_operation.repr()?);
+
+            Ok(())
+        })
+        .expect("Something went wrong on the Python side.");
     }
 }

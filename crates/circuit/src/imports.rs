@@ -63,9 +63,14 @@ pub static BUILTIN_USER_WARNING: ImportOnceCell = ImportOnceCell::new("builtins"
 pub static BUILTIN_HASH: ImportOnceCell = ImportOnceCell::new("builtins", "hash");
 
 pub static OPERATION: ImportOnceCell = ImportOnceCell::new("qiskit.circuit.operation", "Operation");
+pub static RUST_OPERATION: ImportOnceCell =
+    ImportOnceCell::new("qiskit.circuit.operation", "RustOperation");
 pub static INSTRUCTION: ImportOnceCell =
     ImportOnceCell::new("qiskit.circuit.instruction", "Instruction");
+pub static RUST_INSTRUCTION: ImportOnceCell =
+    ImportOnceCell::new("qiskit.circuit.instruction", "RustInstruction");
 pub static GATE: ImportOnceCell = ImportOnceCell::new("qiskit.circuit.gate", "Gate");
+pub static RUST_GATE: ImportOnceCell = ImportOnceCell::new("qiskit.circuit.gate", "RustGate");
 pub static CONTROL_FLOW_OP: ImportOnceCell =
     ImportOnceCell::new("qiskit.circuit.controlflow", "ControlFlowOp");
 pub static PARAMETER: ImportOnceCell = ImportOnceCell::new("qiskit.circuit.parameter", "Parameter");
