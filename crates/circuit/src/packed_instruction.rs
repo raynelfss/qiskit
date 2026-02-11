@@ -19,11 +19,11 @@ use crate::imports::{
 };
 use crate::instruction::Parameters;
 use crate::interner::Interned;
-use crate::operations::NativeOperation;
 use crate::operations::{
     ControlFlow, ControlFlowInstruction, Operation, OperationRef, Param, PauliProductMeasurement,
     PyOperationTypes, PythonOperation, StandardGate, StandardInstruction, UnitaryGate,
 };
+use crate::operations::{NativeOperation, NativeOperationKind, NativeOperationView};
 use crate::{Block, Clbit, Qubit};
 use hashbrown::HashMap;
 use nalgebra::Matrix2;
@@ -431,13 +431,10 @@ impl PackedOperation {
             PackedOperationType::Opaque => OperationRef::Opaque(self.try_into().unwrap()),
             PackedOperationType::Native => {
                 let native: &NativeOperation = self.try_into().unwrap();
-                match native {
-                    NativeOperation::Gate(gate) => OperationRef::CustomGate(gate.as_ref()),
-                    NativeOperation::Instruction(instruction) => {
-                        OperationRef::CustomInstruction(instruction.as_ref())
-                    }
-                    NativeOperation::Operation(operation) => {
-                        OperationRef::CustomOperation(operation.as_ref())
+                match native.view() {
+                    NativeOperationView::Gate(gate) => OperationRef::CustomGate(gate),
+                    NativeOperationView::Instruction(instruction) => {
+                        OperationRef::CustomInstruction(instruction)
                     }
                 }
             }
@@ -453,7 +450,7 @@ impl PackedOperation {
             PackedOperationType::StandardGate => true,
             PackedOperationType::Native => {
                 let opaque: &NativeOperation = self.try_into().unwrap();
-                matches!(opaque, NativeOperation::Gate(_))
+                matches!(opaque.kind(), NativeOperationKind::Gate)
             }
             PackedOperationType::Opaque => {
                 let opaque: &OpaqueOperation = self.try_into().unwrap();
@@ -612,11 +609,10 @@ impl PackedOperation {
                     INSTRUCTION.get_bound(py)
                 }
             },
-            OperationRef::CustomGate(custom_gate) => &custom_gate.py_type(py)?,
+            OperationRef::CustomGate(custom_gate) => custom_gate.py_type(py)?,
             OperationRef::CustomInstruction(custom_instruction) => {
-                &custom_instruction.py_type(py)?
+                custom_instruction.py_type(py)?
             }
-            OperationRef::CustomOperation(custom_operation) => &custom_operation.py_type(py)?,
         };
         py_op.is_instance(py_type)
     }
@@ -637,7 +633,6 @@ impl Operation for PackedOperation {
             OperationRef::Opaque(opaque_operation) => opaque_operation.name(),
             OperationRef::CustomGate(custom_gate) => custom_gate.name(),
             OperationRef::CustomInstruction(custom_instruction) => custom_instruction.name(),
-            OperationRef::CustomOperation(custom_operation) => custom_operation.name(),
         };
         // SAFETY: all of the inner parts of the view are owned by `self`, so it's valid for us to
         // forcibly reborrowing up to our own lifetime. We avoid using `<OperationRef as Operation>`
@@ -689,14 +684,11 @@ impl Clone for PackedOperation {
             OperationRef::Unitary(unitary) => Self::from_unitary(Box::new(unitary.clone())),
             OperationRef::PauliProductMeasurement(ppm) => Self::from_ppm(Box::new(ppm.clone())),
             OperationRef::Opaque(opaque_operation) => Self::from(opaque_operation.clone()),
-            OperationRef::CustomGate(custom_gate) => {
-                Self::from(NativeOperation::from_gate_ref(custom_gate))
-            }
             OperationRef::CustomInstruction(custom_instruction) => {
-                Self::from(NativeOperation::from_instruction_ref(custom_instruction))
+                Self::from(NativeOperation::from(custom_instruction.clone_dyn()))
             }
-            OperationRef::CustomOperation(custom_operation) => {
-                Self::from(NativeOperation::from_operation_ref(custom_operation))
+            OperationRef::CustomGate(custom_gate) => {
+                Self::from(NativeOperation::from(custom_gate.clone_dyn()))
             }
         }
     }

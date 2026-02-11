@@ -270,8 +270,7 @@ impl DAGOpNode {
                 OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
                 OperationRef::Opaque(_)
                 | OperationRef::CustomGate(_)
-                | OperationRef::CustomInstruction(_)
-                | OperationRef::CustomOperation(_) => instruction.operation.clone(),
+                | OperationRef::CustomInstruction(_) => instruction.operation.clone(),
             };
             #[cfg(feature = "cache_pygates")]
             {
@@ -327,8 +326,7 @@ impl DAGOpNode {
                     OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
                     OperationRef::Opaque(_)
                     | OperationRef::CustomGate(_)
-                    | OperationRef::CustomInstruction(_)
-                    | OperationRef::CustomOperation(_) => self.instruction.operation.clone(),
+                    | OperationRef::CustomInstruction(_) => self.instruction.operation.clone(),
                 }
             } else {
                 self.instruction.operation.clone()

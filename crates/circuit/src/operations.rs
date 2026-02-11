@@ -11,6 +11,7 @@
 // that they have been altered from the originals.
 
 use approx::relative_eq;
+use std::any::Any;
 use std::f64::consts::PI;
 use std::fmt::Debug;
 use std::num::NonZero;
@@ -21,8 +22,9 @@ use std::{fmt, vec};
 use crate::bit::{ClassicalRegister, ShareableClbit};
 use crate::circuit_data::CircuitData;
 use crate::classical::expr;
-use crate::custom_operations::{CustomGate, CustomInstruction, CustomOperation, OpaqueOperation};
+use crate::custom_operations::{CustomOperation, OpaqueOperation};
 use crate::duration::Duration;
+use crate::imports::{QUANTUM_CIRCUIT, RUST_GATE, RUST_INSTRUCTION};
 use crate::packed_instruction::PackedInstruction;
 use crate::parameter::parameter_expression::{
     ParameterExpression, PyParameter, PyParameterExpression,
@@ -289,9 +291,8 @@ pub enum OperationRef<'a> {
     Unitary(&'a UnitaryGate),
     PauliProductMeasurement(&'a PauliProductMeasurement),
     Opaque(&'a OpaqueOperation),
-    CustomGate(&'a dyn CustomGate),
-    CustomInstruction(&'a dyn CustomInstruction),
-    CustomOperation(&'a dyn CustomOperation),
+    CustomGate(&'a dyn CustomOperation),
+    CustomInstruction(&'a dyn CustomOperation),
 }
 
 impl Operation for OperationRef<'_> {
@@ -309,7 +310,6 @@ impl Operation for OperationRef<'_> {
             Self::Opaque(opaque) => opaque.name(),
             Self::CustomGate(custom) => custom.name(),
             Self::CustomInstruction(custom) => custom.name(),
-            Self::CustomOperation(custom) => custom.name(),
         }
     }
     #[inline]
@@ -326,7 +326,6 @@ impl Operation for OperationRef<'_> {
             Self::Opaque(opaque) => opaque.num_qubits(),
             Self::CustomGate(custom) => custom.num_qubits(),
             Self::CustomInstruction(custom) => custom.num_qubits(),
-            Self::CustomOperation(custom) => custom.num_qubits(),
         }
     }
     #[inline]
@@ -343,7 +342,6 @@ impl Operation for OperationRef<'_> {
             Self::Opaque(opaque) => opaque.num_clbits(),
             Self::CustomGate(custom) => custom.num_clbits(),
             Self::CustomInstruction(custom) => custom.num_clbits(),
-            Self::CustomOperation(custom) => custom.num_clbits(),
         }
     }
     #[inline]
@@ -360,7 +358,6 @@ impl Operation for OperationRef<'_> {
             Self::Opaque(opaque) => opaque.num_params(),
             Self::CustomGate(custom) => custom.num_params(),
             Self::CustomInstruction(custom) => custom.num_params(),
-            Self::CustomOperation(custom) => custom.num_params(),
         }
     }
     #[inline]
@@ -377,7 +374,6 @@ impl Operation for OperationRef<'_> {
             Self::Opaque(opaque) => opaque.directive(),
             Self::CustomGate(custom) => custom.directive(),
             Self::CustomInstruction(custom) => custom.directive(),
-            Self::CustomOperation(custom) => custom.directive(),
         }
     }
 }
@@ -3390,130 +3386,231 @@ impl PartialEq for PauliProductMeasurement {
 
 impl Eq for PauliProductMeasurement {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum NativeOperationKind {
+    /// A unitary operation in the circuit.
+    Gate,
+    /// A non-unitary operation in the circuit.
+    Instruction,
+}
+
 #[derive(Debug)]
 #[repr(align(8))]
-pub enum NativeOperation {
-    Operation(Box<dyn CustomOperation>),
-    Instruction(Box<dyn CustomInstruction>),
-    Gate(Box<dyn CustomGate>),
+pub struct NativeOperation {
+    kind: NativeOperationKind,
+    op: Box<dyn CustomOperation>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NativeOperationView<'a> {
+    Gate(&'a dyn CustomOperation),
+    Instruction(&'a dyn CustomOperation),
 }
 
 impl NativeOperation {
-    pub fn from_gate<T>(gate: T) -> Self
-    where
-        T: CustomGate,
-    {
-        let boxed: Box<dyn CustomGate> = Box::new(gate);
-        Self::Gate(boxed)
+    pub fn view(&self) -> NativeOperationView<'_> {
+        match self.kind {
+            NativeOperationKind::Gate => NativeOperationView::Gate(self.op.as_ref()),
+            NativeOperationKind::Instruction => NativeOperationView::Instruction(self.op.as_ref()),
+        }
     }
 
-    pub fn from_instruction<T>(instruction: T) -> Self
-    where
-        T: CustomInstruction,
-    {
-        let boxed: Box<dyn CustomInstruction> = Box::new(instruction);
-        Self::Instruction(boxed)
+    pub fn kind(&self) -> NativeOperationKind {
+        self.kind
     }
 
-    pub fn from_operation<T>(operation: T) -> Self
-    where
-        T: CustomOperation,
-    {
-        let boxed: Box<dyn CustomOperation> = Box::new(operation);
-        Self::Operation(boxed)
+    pub fn label(&self) -> Option<&str> {
+        self.op.label()
     }
 
-    pub fn from_gate_ref<T>(gate: &T) -> Self
-    where
-        T: CustomGate + ?Sized,
-    {
-        Self::Gate(gate.clone_dyn())
+    pub fn definition(&self, params: &[Param]) -> Option<CircuitData> {
+        self.op.definition(params)
     }
 
-    pub fn from_instruction_ref<T>(instruction: &T) -> Self
-    where
-        T: CustomInstruction + ?Sized,
-    {
-        Self::Instruction(instruction.clone_dyn())
+    pub fn matrix(&self, params: &[Param]) -> Option<Array2<Complex64>> {
+        // TODO: Make this err
+        match self.kind {
+            NativeOperationKind::Gate => self.op.matrix(params),
+            NativeOperationKind::Instruction => None,
+        }
     }
 
-    pub fn from_operation_ref<T>(operation: &T) -> Self
-    where
-        T: CustomOperation + ?Sized,
-    {
-        Self::Operation(operation.clone_dyn())
+    pub fn downcast_ref<T: CustomOperation>(&self) -> Option<&T> {
+        let as_dyn: &dyn Any = &self.op;
+        as_dyn.downcast_ref()
     }
 
-    pub fn downcast_gate<T: CustomGate>(&self) -> Option<&T> {
-        let NativeOperation::Gate(gate) = self else {
-            return None;
+    pub fn create_py_op<'py>(
+        &self,
+        py: Python<'py>,
+        params: Option<SmallVec<[Param; 3]>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let py_class = PyNativeOperation {
+            inner: self.clone(),
+            parameters: params,
         };
-        gate.downcast_ref()
+        match self.kind {
+            NativeOperationKind::Gate => {
+                let custom_gate = RUST_GATE.get_bound(py);
+                custom_gate.call1((py_class,))
+            }
+            NativeOperationKind::Instruction => {
+                let custom_inst = RUST_INSTRUCTION.get_bound(py);
+                custom_inst.call1((py_class,))
+            }
+        }
     }
 
-    pub fn downcast_instruction<T: CustomInstruction>(&self) -> Option<&T> {
-        let NativeOperation::Instruction(instruction) = self else {
-            return None;
-        };
-        instruction.downcast_ref()
-    }
-
-    pub fn downcast_operation<T: CustomOperation>(&self) -> Option<&T> {
-        let NativeOperation::Operation(operation) = self else {
-            return None;
-        };
-        operation.downcast_ref()
+    pub fn py_type<'py>(&self, py: Python<'py>) -> PyResult<&Bound<'py, pyo3::types::PyType>> {
+        match self.kind {
+            NativeOperationKind::Gate => {
+                Ok(RUST_GATE.get_bound(py).cast::<pyo3::types::PyType>()?)
+            }
+            NativeOperationKind::Instruction => Ok(RUST_INSTRUCTION
+                .get_bound(py)
+                .cast::<pyo3::types::PyType>()?),
+        }
     }
 }
 
 impl Operation for NativeOperation {
     fn name(&self) -> &str {
-        match self {
-            NativeOperation::Operation(custom_operation) => custom_operation.name(),
-            NativeOperation::Instruction(custom_instruction) => custom_instruction.name(),
-            NativeOperation::Gate(custom_gate) => custom_gate.name(),
+        match self.view() {
+            NativeOperationView::Gate(custom_gate) => custom_gate.name(),
+            NativeOperationView::Instruction(custom_instruction) => custom_instruction.name(),
         }
     }
 
     fn num_qubits(&self) -> u32 {
-        match self {
-            NativeOperation::Operation(custom_operation) => custom_operation.num_qubits(),
-            NativeOperation::Instruction(custom_instruction) => custom_instruction.num_qubits(),
-            NativeOperation::Gate(custom_gate) => custom_gate.num_qubits(),
+        match self.view() {
+            NativeOperationView::Gate(custom_gate) => custom_gate.num_qubits(),
+            NativeOperationView::Instruction(custom_instruction) => custom_instruction.num_qubits(),
         }
     }
 
     fn num_clbits(&self) -> u32 {
-        match self {
-            NativeOperation::Operation(custom_operation) => custom_operation.num_clbits(),
-            NativeOperation::Instruction(custom_instruction) => custom_instruction.num_clbits(),
-            NativeOperation::Gate(custom_gate) => custom_gate.num_clbits(),
+        match self.view() {
+            NativeOperationView::Gate(custom_gate) => custom_gate.num_clbits(),
+            NativeOperationView::Instruction(custom_instruction) => custom_instruction.num_clbits(),
         }
     }
 
     fn num_params(&self) -> u32 {
-        match self {
-            NativeOperation::Operation(custom_operation) => custom_operation.num_params(),
-            NativeOperation::Instruction(custom_instruction) => custom_instruction.num_params(),
-            NativeOperation::Gate(custom_gate) => custom_gate.num_params(),
+        match self.view() {
+            NativeOperationView::Gate(custom_gate) => custom_gate.num_params(),
+            NativeOperationView::Instruction(custom_instruction) => custom_instruction.num_params(),
         }
     }
 
     fn directive(&self) -> bool {
-        match self {
-            NativeOperation::Operation(custom_operation) => custom_operation.directive(),
-            NativeOperation::Instruction(custom_instruction) => custom_instruction.directive(),
-            NativeOperation::Gate(custom_gate) => custom_gate.directive(),
+        match self.view() {
+            NativeOperationView::Gate(custom_gate) => custom_gate.directive(),
+            NativeOperationView::Instruction(custom_instruction) => custom_instruction.directive(),
         }
     }
 }
 
 impl Clone for NativeOperation {
     fn clone(&self) -> Self {
-        match self {
-            Self::Operation(arg0) => Self::Operation(arg0.clone_dyn()),
-            Self::Instruction(arg0) => Self::Instruction(arg0.clone_dyn()),
-            Self::Gate(arg0) => Self::Gate(arg0.clone_dyn()),
+        Self {
+            kind: self.kind,
+            op: self.op.clone_dyn(),
+        }
+    }
+}
+
+impl<T: CustomOperation> From<T> for NativeOperation {
+    fn from(value: T) -> Self {
+        let op = Box::new(value);
+        let kind = match op.is_unitary() {
+            true => NativeOperationKind::Gate,
+            false => NativeOperationKind::Instruction,
+        };
+        Self { kind, op }
+    }
+}
+
+impl From<Box<dyn CustomOperation>> for NativeOperation {
+    fn from(value: Box<dyn CustomOperation>) -> Self {
+        let kind = match value.is_unitary() {
+            true => NativeOperationKind::Gate,
+            false => NativeOperationKind::Instruction,
+        };
+        Self { kind, op: value }
+    }
+}
+
+#[pyclass(name = "NativeOperation", module = "qiskit.circuit.operation")]
+#[derive(Debug, Clone)]
+pub struct PyNativeOperation {
+    inner: NativeOperation,
+    parameters: Option<SmallVec<[Param; 3]>>,
+}
+
+#[pymethods]
+impl PyNativeOperation {
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    #[getter]
+    fn num_qubits(&self) -> u32 {
+        self.inner.num_qubits()
+    }
+
+    #[getter]
+    fn num_clbits(&self) -> u32 {
+        self.inner.num_clbits()
+    }
+
+    #[getter]
+    fn num_params(&self) -> u32 {
+        self.inner.num_params()
+    }
+
+    #[getter]
+    fn directive(&self) -> bool {
+        self.inner.directive()
+    }
+
+    #[getter]
+    fn label(&self) -> Option<&str> {
+        self.inner.label()
+    }
+
+    #[getter]
+    fn params(&self) -> Option<SmallVec<[Param; 3]>> {
+        self.parameters.clone()
+    }
+
+    #[getter]
+    fn definition<'py>(&'py self, py: Python<'py>) -> Option<Bound<'py, PyAny>> {
+        let params = self.parameters.as_deref().unwrap_or_default();
+        let circ_class = QUANTUM_CIRCUIT.get_bound(py);
+        self.inner
+            .definition(params)
+            .map(|circ| circ_class.call_method1("_from_circuit_data", (circ,)).ok())?
+    }
+
+    fn __array__<'py>(&'py self, dtype: Bound<'py, PyAny>) -> Option<Bound<'py, PyAny>> {
+        let py = dtype.py();
+        let params = self.parameters.as_deref().unwrap_or_default();
+        if let Some(matrix) = self.inner.matrix(params) {
+            let py_matrix = matrix.into_pyarray(py);
+            Some(py_matrix.into_any())
+        } else {
+            None
+        }
+    }
+}
+
+impl PyNativeOperation {
+    pub fn new(op: NativeOperation, parameters: Option<SmallVec<[Param; 3]>>) -> Self {
+        Self {
+            inner: op,
+            parameters,
         }
     }
 }

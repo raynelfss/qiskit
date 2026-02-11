@@ -199,8 +199,5 @@ pub fn create_py_op(
         OperationRef::CustomInstruction(custom_instruction) => custom_instruction
             .create_py_op(py, params.map(|p| p.unwrap_params()))
             .map(|op| op.unbind()),
-        OperationRef::CustomOperation(custom_operation) => custom_operation
-            .create_py_op(py, params.map(|p| p.unwrap_params()))
-            .map(|op| op.unbind()),
     }
 }

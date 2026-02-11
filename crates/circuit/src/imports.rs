@@ -63,8 +63,6 @@ pub static BUILTIN_USER_WARNING: ImportOnceCell = ImportOnceCell::new("builtins"
 pub static BUILTIN_HASH: ImportOnceCell = ImportOnceCell::new("builtins", "hash");
 
 pub static OPERATION: ImportOnceCell = ImportOnceCell::new("qiskit.circuit.operation", "Operation");
-pub static RUST_OPERATION: ImportOnceCell =
-    ImportOnceCell::new("qiskit.circuit.operation", "RustOperation");
 pub static INSTRUCTION: ImportOnceCell =
     ImportOnceCell::new("qiskit.circuit.instruction", "Instruction");
 pub static RUST_INSTRUCTION: ImportOnceCell =

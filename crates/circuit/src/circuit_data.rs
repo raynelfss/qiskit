@@ -817,8 +817,7 @@ impl CircuitData {
                     OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
                     OperationRef::Opaque(_)
                     | OperationRef::CustomGate(_)
-                    | OperationRef::CustomInstruction(_)
-                    | OperationRef::CustomOperation(_) => inst.op.clone(),
+                    | OperationRef::CustomInstruction(_) => inst.op.clone(),
                 };
                 res.data.push(PackedInstruction {
                     op: new_op,
@@ -847,8 +846,7 @@ impl CircuitData {
                     OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
                     OperationRef::Opaque(_)
                     | OperationRef::CustomGate(_)
-                    | OperationRef::CustomInstruction(_)
-                    | OperationRef::CustomOperation(_) => inst.op.clone(),
+                    | OperationRef::CustomInstruction(_) => inst.op.clone(),
                 };
                 res.data.push(PackedInstruction {
                     op: new_op,

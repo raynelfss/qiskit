@@ -796,10 +796,9 @@ fn extract_definition(op: &PackedOperation, params: &[Param]) -> PyResult<Option
             | StandardInstruction::Barrier(_)
             | StandardInstruction::Delay(_) => Ok(None),
         },
-        OperationRef::ControlFlow(_)
-        | OperationRef::Operation(_)
-        | OperationRef::Opaque(_)
-        | OperationRef::CustomOperation(_) => Ok(None),
+        OperationRef::ControlFlow(_) | OperationRef::Operation(_) | OperationRef::Opaque(_) => {
+            Ok(None)
+        }
         OperationRef::CustomGate(custom_gate) => Ok(custom_gate.definition(params)),
         OperationRef::CustomInstruction(custom_instruction) => {
             Ok(custom_instruction.definition(params))
@@ -958,9 +957,6 @@ fn synthesize_op_using_plugins(
             .create_py_op(py, Some(params.iter().cloned().collect()))?
             .unbind(),
         OperationRef::CustomInstruction(custom_instruction) => custom_instruction
-            .create_py_op(py, Some(params.iter().cloned().collect()))?
-            .unbind(),
-        OperationRef::CustomOperation(custom_operation) => custom_operation
             .create_py_op(py, Some(params.iter().cloned().collect()))?
             .unbind(),
     };

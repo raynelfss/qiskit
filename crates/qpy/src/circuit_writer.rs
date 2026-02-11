@@ -239,9 +239,9 @@ fn pack_instruction(
         OperationRef::Opaque(opaque_operation) => {
             pack_opaque_operation(opaque_operation, instruction, qpy_data)?
         }
-        OperationRef::CustomGate(_)
-        | OperationRef::CustomInstruction(_)
-        | OperationRef::CustomOperation(_) => pack_custom_operation(instruction, qpy_data)?,
+        OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) => {
+            pack_custom_operation(instruction, qpy_data)?
+        }
     };
 
     // common data extraction for all instruction types
@@ -976,24 +976,6 @@ fn pack_custom_operation(
                 annotations: None,
             })
         }
-        OperationRef::CustomOperation(_) => {
-            let num_ctrl_qubits: u32 = 0;
-            // TODO: Add control state to custom gates.
-            let ctrl_state: u32 = 0;
-            Ok(formats::CircuitInstructionV2Pack {
-                num_qargs,
-                num_cargs,
-                extras_key: 0,
-                num_ctrl_qubits,
-                ctrl_state,
-                gate_class_name,
-                label: Default::default(),
-                condition: Default::default(),
-                bit_data: Default::default(),
-                params,
-                annotations: None,
-            })
-        }
         _ => Err(PyValueError::new_err(format!(
             "Passed a non-custom operation '{}' as a native operation.",
             instruction.op.name()
@@ -1145,9 +1127,6 @@ fn pack_custom_instruction(
                         qpy_data.annotation_handler.annotation_factories,
                     )?);
                 }
-                base_gate_raw = serialize(&pack_custom_operation(instruction, qpy_data)?);
-            }
-            OperationRef::CustomOperation(_) => {
                 base_gate_raw = serialize(&pack_custom_operation(instruction, qpy_data)?);
             }
             _ => (),

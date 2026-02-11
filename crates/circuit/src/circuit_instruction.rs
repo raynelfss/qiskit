@@ -992,7 +992,6 @@ pub fn extract_params<T: CircuitBlock>(
         OperationRef::Opaque(_)
         | OperationRef::CustomGate(_)
         | OperationRef::CustomInstruction(_)
-        | OperationRef::CustomOperation(_)
         | OperationRef::Gate(_)
         | OperationRef::Instruction(_)
         | OperationRef::Operation(_) => {

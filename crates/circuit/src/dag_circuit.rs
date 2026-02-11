@@ -7884,8 +7884,7 @@ impl DAGCircuit {
                         OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
                         OperationRef::Opaque(_)
                         | OperationRef::CustomGate(_)
-                        | OperationRef::CustomInstruction(_)
-                        | OperationRef::CustomOperation(_) => instr.op.clone(),
+                        | OperationRef::CustomInstruction(_) => instr.op.clone(),
                     }
                 } else {
                     instr.op.clone()

@@ -327,9 +327,9 @@ pub(crate) fn gate_class_name(op: &PackedOperation) -> PyResult<String> {
                     Ok("Instruction".to_string())
                 }
             },
-            OperationRef::CustomGate(_)
-            | OperationRef::CustomInstruction(_)
-            | OperationRef::CustomOperation(_) => Ok(Default::default()),
+            OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) => {
+                Ok(Default::default())
+            }
         }?;
         Ok(name)
     })

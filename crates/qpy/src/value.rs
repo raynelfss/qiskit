@@ -699,12 +699,6 @@ pub(crate) fn get_circuit_type_key(op: &PackedOperation) -> PyResult<CircuitInst
             false => Ok(CircuitInstructionType::Gate),
         },
         OperationRef::CustomInstruction(_) => Ok(CircuitInstructionType::Instruction),
-        OperationRef::CustomOperation(custom_operation) => {
-            Err(PyErr::new::<PyValueError, _>(format!(
-                "Unable to determine circuit type key for {:?}",
-                custom_operation.name()
-            )))
-        }
     }
 }
 

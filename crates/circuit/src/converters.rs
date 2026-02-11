@@ -155,8 +155,7 @@ pub fn dag_to_circuit(
                     OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
                     OperationRef::Opaque(_)
                     | OperationRef::CustomGate(_)
-                    | OperationRef::CustomInstruction(_)
-                    | OperationRef::CustomOperation(_) => instr.op.clone(),
+                    | OperationRef::CustomInstruction(_) => instr.op.clone(),
                 };
                 let mut instr = instr.clone();
                 instr.op = op;
