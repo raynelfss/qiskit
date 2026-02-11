@@ -850,16 +850,11 @@ pub unsafe extern "C" fn qk_circuit_instruction_kind(
         OperationRef::Unitary(_) => COperationKind::Unitary,
         OperationRef::PauliProductMeasurement(_) => COperationKind::PauliProductMeasurement,
         OperationRef::ControlFlow(_) => COperationKind::ControlFlow,
-        OperationRef::Gate(_) | OperationRef::Instruction(_) | OperationRef::Operation(_) => {
-            COperationKind::Unknown
-        }
-        OperationRef::Opaque(opaque_operation) => match opaque_operation {
-            qiskit_circuit::custom_operations::OpaqueOperation::Gate(_) => COperationKind::Gate,
-            qiskit_circuit::custom_operations::OpaqueOperation::Instruction(_) => {
-                COperationKind::Unknown
-            }
-        },
-        OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) => COperationKind::Unknown,
+        OperationRef::Gate(_)
+        | OperationRef::Instruction(_)
+        | OperationRef::Operation(_)
+        | OperationRef::CustomGate(_)
+        | OperationRef::CustomInstruction(_) => COperationKind::Unknown,
     }
 }
 

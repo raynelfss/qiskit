@@ -11,11 +11,10 @@
 // that they have been altered from the originals.
 
 use crate::circuit_data::CircuitData;
-use crate::custom_operations::OpaqueOperation;
 use crate::imports::{
-    BARRIER, BOX_OP, BREAK_LOOP_OP, CONTINUE_LOOP_OP, DELAY, FOR_LOOP_OP, GATE, IF_ELSE_OP,
-    INSTRUCTION, MEASURE, PAULI_PRODUCT_MEASUREMENT, RESET, SWITCH_CASE_OP, UNITARY_GATE,
-    WHILE_LOOP_OP, get_std_gate_class,
+    BARRIER, BOX_OP, BREAK_LOOP_OP, CONTINUE_LOOP_OP, DELAY, FOR_LOOP_OP, IF_ELSE_OP, MEASURE,
+    PAULI_PRODUCT_MEASUREMENT, RESET, SWITCH_CASE_OP, UNITARY_GATE, WHILE_LOOP_OP,
+    get_std_gate_class,
 };
 use crate::instruction::Parameters;
 use crate::interner::Interned;
@@ -48,15 +47,14 @@ enum PackedOperationType {
     UnitaryGate = 3,
     PauliProductMeasurement = 4,
     ControlFlow = 5,
-    Opaque = 6,
-    Native = 7,
+    Native = 6,
 }
 
 unsafe impl ::bytemuck::CheckedBitPattern for PackedOperationType {
     type Bits = u8;
 
     fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
-        *bits < 8
+        *bits < 7
     }
 }
 unsafe impl ::bytemuck::NoUninit for PackedOperationType {}
@@ -259,7 +257,6 @@ mod standard_instruction {
 
 /// A private module to encapsulate the encoding of pointer types.
 mod pointer {
-    use crate::custom_operations::OpaqueOperation;
     use crate::operations::NativeOperation;
     use crate::operations::{
         ControlFlowInstruction, PauliProductMeasurement, PyOperationTypes, UnitaryGate,
@@ -349,7 +346,6 @@ mod pointer {
         PackedOperationType::PauliProductMeasurement
     );
     impl_packable_pointer!(ControlFlowInstruction, PackedOperationType::ControlFlow);
-    impl_packable_pointer!(OpaqueOperation, PackedOperationType::Opaque);
     impl_packable_pointer!(NativeOperation, PackedOperationType::Native);
 }
 
@@ -428,7 +424,6 @@ impl PackedOperation {
             PackedOperationType::PauliProductMeasurement => {
                 OperationRef::PauliProductMeasurement(self.try_into().unwrap())
             }
-            PackedOperationType::Opaque => OperationRef::Opaque(self.try_into().unwrap()),
             PackedOperationType::Native => {
                 let native: &NativeOperation = self.try_into().unwrap();
                 match native.view() {
@@ -451,10 +446,6 @@ impl PackedOperation {
             PackedOperationType::Native => {
                 let opaque: &NativeOperation = self.try_into().unwrap();
                 matches!(opaque.kind(), NativeOperationKind::Gate)
-            }
-            PackedOperationType::Opaque => {
-                let opaque: &OpaqueOperation = self.try_into().unwrap();
-                matches!(opaque, OpaqueOperation::Gate(_))
             }
             PackedOperationType::PyOperationTypes => {
                 let op: &PyOperationTypes = self.try_into().unwrap();
@@ -603,12 +594,6 @@ impl PackedOperation {
                     .cast::<PyType>()?
                     .is_subclass(py_type);
             }
-            OperationRef::Opaque(opaque) => match opaque {
-                crate::custom_operations::OpaqueOperation::Gate(_) => GATE.get_bound(py),
-                crate::custom_operations::OpaqueOperation::Instruction(_) => {
-                    INSTRUCTION.get_bound(py)
-                }
-            },
             OperationRef::CustomGate(custom_gate) => custom_gate.py_type(py)?,
             OperationRef::CustomInstruction(custom_instruction) => {
                 custom_instruction.py_type(py)?
@@ -630,7 +615,6 @@ impl Operation for PackedOperation {
             OperationRef::Operation(operation) => operation.name(),
             OperationRef::Unitary(unitary) => unitary.name(),
             OperationRef::PauliProductMeasurement(ppm) => ppm.name(),
-            OperationRef::Opaque(opaque_operation) => opaque_operation.name(),
             OperationRef::CustomGate(custom_gate) => custom_gate.name(),
             OperationRef::CustomInstruction(custom_instruction) => custom_instruction.name(),
         };
@@ -683,7 +667,6 @@ impl Clone for PackedOperation {
             }
             OperationRef::Unitary(unitary) => Self::from_unitary(Box::new(unitary.clone())),
             OperationRef::PauliProductMeasurement(ppm) => Self::from_ppm(Box::new(ppm.clone())),
-            OperationRef::Opaque(opaque_operation) => Self::from(opaque_operation.clone()),
             OperationRef::CustomInstruction(custom_instruction) => {
                 Self::from(NativeOperation::from(custom_instruction.clone_dyn()))
             }
@@ -705,7 +688,6 @@ impl Drop for PackedOperation {
                 PauliProductMeasurement::drop_packed(self)
             }
             PackedOperationType::ControlFlow => ControlFlowInstruction::drop_packed(self),
-            PackedOperationType::Opaque => OpaqueOperation::drop_packed(self),
             PackedOperationType::Native => NativeOperation::drop_packed(self),
         }
     }

@@ -32,7 +32,6 @@ use qiskit_circuit::bit::{
 use qiskit_circuit::circuit_data::{CircuitData, CircuitStretchType, CircuitVarType};
 use qiskit_circuit::circuit_instruction::{CircuitInstruction, OperationFromPython};
 use qiskit_circuit::converters::QuantumCircuitData;
-use qiskit_circuit::custom_operations::OpaqueOperation;
 use qiskit_circuit::imports;
 use qiskit_circuit::instruction::Parameters;
 use qiskit_circuit::operations::{
@@ -236,9 +235,6 @@ fn pack_instruction(
         OperationRef::ControlFlow(control_flow_inst) => {
             pack_control_flow_inst(control_flow_inst, instruction, qpy_data)?
         }
-        OperationRef::Opaque(opaque_operation) => {
-            pack_opaque_operation(opaque_operation, instruction, qpy_data)?
-        }
         OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) => {
             pack_custom_operation(instruction, qpy_data)?
         }
@@ -309,29 +305,6 @@ pub fn standard_instruction_class_name(inst: &StandardInstruction) -> &str {
         StandardInstruction::Measure => "Measure",
         StandardInstruction::Reset => "Reset",
     }
-}
-
-#[inline]
-fn pack_opaque_operation(
-    op: &OpaqueOperation,
-    instruction: &PackedInstruction,
-    qpy_data: &mut QPYWriteData,
-) -> PyResult<formats::CircuitInstructionV2Pack> {
-    let params = pack_instruction_params(instruction.params_view(), qpy_data)?;
-    Ok(formats::CircuitInstructionV2Pack {
-        num_qargs: op.num_qubits(),
-        num_cargs: op.num_clbits(),
-        extras_key: 0,
-        num_ctrl_qubits: 0,
-        ctrl_state: 0, // Opaque operations can't be controlled.
-        // Opaque operations don't have an associated class.
-        gate_class_name: Default::default(),
-        label: Default::default(),
-        condition: Default::default(),
-        bit_data: Default::default(),
-        params,
-        annotations: None,
-    })
 }
 
 fn pack_pauli_product_measurement(

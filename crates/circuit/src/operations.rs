@@ -22,7 +22,7 @@ use std::{fmt, vec};
 use crate::bit::{ClassicalRegister, ShareableClbit};
 use crate::circuit_data::CircuitData;
 use crate::classical::expr;
-use crate::custom_operations::{CustomOperation, OpaqueOperation};
+use crate::custom_operations::CustomOperation;
 use crate::duration::Duration;
 use crate::imports::{QUANTUM_CIRCUIT, RUST_GATE, RUST_INSTRUCTION};
 use crate::packed_instruction::PackedInstruction;
@@ -290,7 +290,6 @@ pub enum OperationRef<'a> {
     Operation(&'a PyInstruction),
     Unitary(&'a UnitaryGate),
     PauliProductMeasurement(&'a PauliProductMeasurement),
-    Opaque(&'a OpaqueOperation),
     CustomGate(&'a dyn CustomOperation),
     CustomInstruction(&'a dyn CustomOperation),
 }
@@ -307,7 +306,6 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.name(),
             Self::Unitary(unitary) => unitary.name(),
             Self::PauliProductMeasurement(ppm) => ppm.name(),
-            Self::Opaque(opaque) => opaque.name(),
             Self::CustomGate(custom) => custom.name(),
             Self::CustomInstruction(custom) => custom.name(),
         }
@@ -323,7 +321,6 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.num_qubits(),
             Self::Unitary(unitary) => unitary.num_qubits(),
             Self::PauliProductMeasurement(ppm) => ppm.num_qubits(),
-            Self::Opaque(opaque) => opaque.num_qubits(),
             Self::CustomGate(custom) => custom.num_qubits(),
             Self::CustomInstruction(custom) => custom.num_qubits(),
         }
@@ -339,7 +336,6 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.num_clbits(),
             Self::Unitary(unitary) => unitary.num_clbits(),
             Self::PauliProductMeasurement(ppm) => ppm.num_clbits(),
-            Self::Opaque(opaque) => opaque.num_clbits(),
             Self::CustomGate(custom) => custom.num_clbits(),
             Self::CustomInstruction(custom) => custom.num_clbits(),
         }
@@ -355,7 +351,6 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.num_params(),
             Self::Unitary(unitary) => unitary.num_params(),
             Self::PauliProductMeasurement(ppm) => ppm.num_params(),
-            Self::Opaque(opaque) => opaque.num_params(),
             Self::CustomGate(custom) => custom.num_params(),
             Self::CustomInstruction(custom) => custom.num_params(),
         }
@@ -371,7 +366,6 @@ impl Operation for OperationRef<'_> {
             Self::Operation(operation) => operation.directive(),
             Self::Unitary(unitary) => unitary.directive(),
             Self::PauliProductMeasurement(ppm) => ppm.directive(),
-            Self::Opaque(opaque) => opaque.directive(),
             Self::CustomGate(custom) => custom.directive(),
             Self::CustomInstruction(custom) => custom.directive(),
         }

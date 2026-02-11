@@ -989,8 +989,7 @@ pub fn extract_params<T: CircuitBlock>(
             }
         }
         OperationRef::Unitary(_) | OperationRef::PauliProductMeasurement(_) => None,
-        OperationRef::Opaque(_)
-        | OperationRef::CustomGate(_)
+        OperationRef::CustomGate(_)
         | OperationRef::CustomInstruction(_)
         | OperationRef::Gate(_)
         | OperationRef::Instruction(_)

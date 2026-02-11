@@ -811,9 +811,9 @@ impl CircuitData {
                     OperationRef::StandardInstruction(instruction) => instruction.into(),
                     OperationRef::Unitary(unitary) => unitary.clone().into(),
                     OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
-                    OperationRef::Opaque(_)
-                    | OperationRef::CustomGate(_)
-                    | OperationRef::CustomInstruction(_) => inst.op.clone(),
+                    OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) => {
+                        inst.op.clone()
+                    }
                 };
                 res.data.push(PackedInstruction {
                     op: new_op,
@@ -840,9 +840,9 @@ impl CircuitData {
                     OperationRef::StandardInstruction(instruction) => instruction.into(),
                     OperationRef::Unitary(unitary) => unitary.clone().into(),
                     OperationRef::PauliProductMeasurement(ppm) => ppm.clone().into(),
-                    OperationRef::Opaque(_)
-                    | OperationRef::CustomGate(_)
-                    | OperationRef::CustomInstruction(_) => inst.op.clone(),
+                    OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) => {
+                        inst.op.clone()
+                    }
                 };
                 res.data.push(PackedInstruction {
                     op: new_op,
@@ -2169,8 +2169,7 @@ impl CircuitData {
                 | OperationRef::StandardGate(_)
                 | OperationRef::StandardInstruction(_)
                 | OperationRef::Unitary(_)
-                | OperationRef::PauliProductMeasurement(_)
-                | OperationRef::Opaque(_) => inst.op.clone(),
+                | OperationRef::PauliProductMeasurement(_) => inst.op.clone(),
                 OperationRef::Gate(gate) => {
                     PyOperationTypes::Gate(gate.py_deepcopy(py, None)?).into()
                 }

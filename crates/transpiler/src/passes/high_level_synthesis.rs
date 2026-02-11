@@ -796,9 +796,7 @@ fn extract_definition(op: &PackedOperation, params: &[Param]) -> PyResult<Option
             | StandardInstruction::Barrier(_)
             | StandardInstruction::Delay(_) => Ok(None),
         },
-        OperationRef::ControlFlow(_) | OperationRef::Operation(_) | OperationRef::Opaque(_) => {
-            Ok(None)
-        }
+        OperationRef::ControlFlow(_) | OperationRef::Operation(_) => Ok(None),
         OperationRef::CustomGate(custom_gate) => Ok(custom_gate.definition(params)),
         OperationRef::CustomInstruction(custom_instruction) => {
             Ok(custom_instruction.definition(params))
@@ -950,9 +948,6 @@ fn synthesize_op_using_plugins(
         OperationRef::Operation(operation) => operation.instruction.clone_ref(py),
         OperationRef::Unitary(unitary) => unitary.create_py_op(py, label)?.into_any(),
         OperationRef::PauliProductMeasurement(ppm) => ppm.create_py_op(py, label)?.into_any(),
-        OperationRef::Opaque(opaque_operation) => {
-            opaque_operation.create_py_op(py, Some(params.iter().cloned().collect()))?
-        }
         OperationRef::CustomGate(custom_gate) => custom_gate
             .create_py_op(py, Some(params.iter().cloned().collect()))?
             .unbind(),
