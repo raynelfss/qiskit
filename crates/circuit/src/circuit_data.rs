@@ -29,8 +29,8 @@ use crate::imports::{ANNOTATED_OPERATION, QUANTUM_CIRCUIT};
 use crate::interner::{Interned, InternedMap, Interner};
 use crate::object_registry::{ObjectRegistry, ObjectRegistryError};
 use crate::operations::{
-    ControlFlow, ControlFlowView, Operation, OperationRef, Param, PyOperationTypes,
-    PythonOperation, StandardGate,
+    ControlFlow, ControlFlowView, NativeOperation, Operation, OperationRef, Param,
+    PyOperationTypes, PythonOperation, StandardGate,
 };
 use crate::packed_instruction::{PackedInstruction, PackedOperation};
 use crate::parameter::parameter_expression::{ParameterError, ParameterExpression};
@@ -2169,7 +2169,8 @@ impl CircuitData {
                 | OperationRef::StandardGate(_)
                 | OperationRef::StandardInstruction(_)
                 | OperationRef::Unitary(_)
-                | OperationRef::PauliProductMeasurement(_) => inst.op.clone(),
+                | OperationRef::PauliProductMeasurement(_)
+                | OperationRef::Opaque(_) => inst.op.clone(),
                 OperationRef::Gate(gate) => {
                     PyOperationTypes::Gate(gate.py_deepcopy(py, None)?).into()
                 }
@@ -2178,6 +2179,10 @@ impl CircuitData {
                 }
                 OperationRef::Operation(op) => {
                     PyOperationTypes::Operation(op.py_deepcopy(py, None)?).into()
+                }
+                OperationRef::CustomGate(custom_operation)
+                | OperationRef::CustomInstruction(custom_operation) => {
+                    NativeOperation::from(custom_operation.clone_dyn()).into()
                 }
             };
             out.push(PackedInstruction { op, ..inst.clone() })?;

@@ -853,6 +853,13 @@ pub unsafe extern "C" fn qk_circuit_instruction_kind(
         OperationRef::Gate(_) | OperationRef::Instruction(_) | OperationRef::Operation(_) => {
             COperationKind::Unknown
         }
+        OperationRef::Opaque(opaque_operation) => match opaque_operation {
+            qiskit_circuit::custom_operations::OpaqueOperation::Gate(_) => COperationKind::Gate,
+            qiskit_circuit::custom_operations::OpaqueOperation::Instruction(_) => {
+                COperationKind::Unknown
+            }
+        },
+        OperationRef::CustomGate(_) | OperationRef::CustomInstruction(_) => COperationKind::Unknown,
     }
 }
 

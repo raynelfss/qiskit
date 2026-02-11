@@ -413,20 +413,19 @@ mod test {
     use crate::custom_operations::CustomOperation;
     use crate::gate_matrix::H_GATE;
     use crate::gate_matrix::rx_gate;
-    
+
     use crate::operations::NativeOperation;
     use crate::operations::Operation;
     use crate::operations::OperationRef;
     use crate::operations::Param;
     use crate::operations::StandardGate;
     use ndarray::aview2;
-    
+
     use pyo3::prelude::*;
-    
+
     use smallvec::smallvec;
 
     use std::f64::consts::PI;
-    
 
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
     struct CustomH;
