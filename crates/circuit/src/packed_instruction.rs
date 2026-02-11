@@ -898,6 +898,7 @@ impl PackedInstruction {
             OperationRef::StandardGate(g) => g.matrix(self.params_view()).map(CowArray::from),
             OperationRef::Gate(g) => g.matrix().map(CowArray::from),
             OperationRef::Unitary(u) => Some(CowArray::from(u.matrix_view())),
+            OperationRef::CustomGate(g) => Some(CowArray::from(g.matrix(self.params_view())?)),
             _ => None,
         }
     }
