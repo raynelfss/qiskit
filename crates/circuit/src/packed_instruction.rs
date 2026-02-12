@@ -11,6 +11,7 @@
 // that they have been altered from the originals.
 
 use crate::circuit_data::CircuitData;
+use crate::custom_operations::{CustomOperationKind, NativeOperation, NativeOperationView};
 use crate::imports::{
     BARRIER, BOX_OP, BREAK_LOOP_OP, CONTINUE_LOOP_OP, DELAY, FOR_LOOP_OP, IF_ELSE_OP, MEASURE,
     PAULI_PRODUCT_MEASUREMENT, RESET, SWITCH_CASE_OP, UNITARY_GATE, WHILE_LOOP_OP,
@@ -22,7 +23,6 @@ use crate::operations::{
     ControlFlow, ControlFlowInstruction, Operation, OperationRef, Param, PauliProductMeasurement,
     PyOperationTypes, PythonOperation, StandardGate, StandardInstruction, UnitaryGate,
 };
-use crate::operations::{NativeOperation, NativeOperationKind, NativeOperationView};
 use crate::{Block, Clbit, Qubit};
 use hashbrown::HashMap;
 use nalgebra::Matrix2;
@@ -257,7 +257,7 @@ mod standard_instruction {
 
 /// A private module to encapsulate the encoding of pointer types.
 mod pointer {
-    use crate::operations::NativeOperation;
+    use crate::custom_operations::NativeOperation;
     use crate::operations::{
         ControlFlowInstruction, PauliProductMeasurement, PyOperationTypes, UnitaryGate,
     };
@@ -405,7 +405,7 @@ impl PackedOperation {
 
     /// Get a safe view onto the packed data within, without assuming ownership.
     #[inline]
-    pub fn view(&self) -> OperationRef<'_> {
+    pub fn view<'a>(&'a self) -> OperationRef<'a> {
         match self.discriminant() {
             PackedOperationType::ControlFlow => OperationRef::ControlFlow(self.try_into().unwrap()),
             PackedOperationType::StandardGate => OperationRef::StandardGate(self.standard_gate()),
@@ -445,7 +445,7 @@ impl PackedOperation {
             PackedOperationType::StandardGate => true,
             PackedOperationType::Native => {
                 let opaque: &NativeOperation = self.try_into().unwrap();
-                matches!(opaque.kind(), NativeOperationKind::Gate)
+                matches!(opaque.kind(), CustomOperationKind::Gate)
             }
             PackedOperationType::PyOperationTypes => {
                 let op: &PyOperationTypes = self.try_into().unwrap();
@@ -594,9 +594,9 @@ impl PackedOperation {
                     .cast::<PyType>()?
                     .is_subclass(py_type);
             }
-            OperationRef::CustomGate(custom_gate) => custom_gate.py_type(py)?,
+            OperationRef::CustomGate(custom_gate) => &custom_gate.py_type(py)?,
             OperationRef::CustomInstruction(custom_instruction) => {
-                custom_instruction.py_type(py)?
+                &custom_instruction.py_type(py)?
             }
         };
         py_op.is_instance(py_type)
@@ -606,18 +606,7 @@ impl PackedOperation {
 impl Operation for PackedOperation {
     fn name(&self) -> &str {
         let view = self.view();
-        let name = match view {
-            OperationRef::ControlFlow(control_flow) => control_flow.name(),
-            OperationRef::StandardGate(ref standard) => standard.name(),
-            OperationRef::StandardInstruction(ref instruction) => instruction.name(),
-            OperationRef::Gate(gate) => gate.name(),
-            OperationRef::Instruction(instruction) => instruction.name(),
-            OperationRef::Operation(operation) => operation.name(),
-            OperationRef::Unitary(unitary) => unitary.name(),
-            OperationRef::PauliProductMeasurement(ppm) => ppm.name(),
-            OperationRef::CustomGate(custom_gate) => custom_gate.name(),
-            OperationRef::CustomInstruction(custom_instruction) => custom_instruction.name(),
-        };
+        let name = view.name();
         // SAFETY: all of the inner parts of the view are owned by `self`, so it's valid for us to
         // forcibly reborrowing up to our own lifetime. We avoid using `<OperationRef as Operation>`
         // just to avoid a further _potential_ unsafeness, were its implementation to start doing

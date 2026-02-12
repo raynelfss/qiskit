@@ -22,6 +22,7 @@ use crate::bit::{
 use crate::bit_locator::BitLocator;
 use crate::circuit_instruction::{CircuitInstruction, OperationFromPython};
 use crate::classical::expr;
+use crate::custom_operations::NativeOperation;
 use crate::dag_circuit::{
     DAGCircuit, DAGIdentifierInfo, DAGStretchType, DAGVarType, add_global_phase,
 };
@@ -29,8 +30,8 @@ use crate::imports::{ANNOTATED_OPERATION, QUANTUM_CIRCUIT};
 use crate::interner::{Interned, InternedMap, Interner};
 use crate::object_registry::{ObjectRegistry, ObjectRegistryError};
 use crate::operations::{
-    ControlFlow, ControlFlowView, NativeOperation, Operation, OperationRef, Param,
-    PyOperationTypes, PythonOperation, StandardGate,
+    ControlFlow, ControlFlowView, Operation, OperationRef, Param, PyOperationTypes,
+    PythonOperation, StandardGate,
 };
 use crate::packed_instruction::{PackedInstruction, PackedOperation};
 use crate::parameter::parameter_expression::{ParameterError, ParameterExpression};
@@ -2179,8 +2180,10 @@ impl CircuitData {
                 OperationRef::Operation(op) => {
                     PyOperationTypes::Operation(op.py_deepcopy(py, None)?).into()
                 }
-                OperationRef::CustomGate(custom_operation)
-                | OperationRef::CustomInstruction(custom_operation) => {
+                OperationRef::CustomGate(custom_operation) => {
+                    NativeOperation::from(custom_operation.clone_dyn()).into()
+                }
+                OperationRef::CustomInstruction(custom_operation) => {
                     NativeOperation::from(custom_operation.clone_dyn()).into()
                 }
             };

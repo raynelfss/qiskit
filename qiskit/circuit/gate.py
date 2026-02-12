@@ -279,11 +279,11 @@ class Gate(Instruction):
             raise CircuitError(f"Invalid param type {type(parameter)} for gate {self.name}.")
 
 
-class RustGate(Gate):
+class CustomGate(Gate):
     """Custom Unitary Gate originating from Rust"""
 
     # Native instance of the gate originating from Rust
-    _native_gate: Gate | None = None
+    _native_gate = None
 
     def __init__(self, native_gate):
         self._native_gate = native_gate

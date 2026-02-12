@@ -563,8 +563,8 @@ class Instruction(Operation):
         return True
 
 
-class RustInstruction(Instruction):
-    _native_instrucion: Instruction | None = None
+class CustomInstruction(Instruction):
+    _native_instrucion = None
 
     def __init__(self, native_inst):
         self._native_instrucion = native_inst

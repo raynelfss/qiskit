@@ -17,64 +17,69 @@ use std::{
 };
 
 use ndarray::Array2;
-use numpy::Complex64;
+use numpy::{Complex64, IntoPyArray};
 use smallvec::SmallVec;
 
 use crate::{
     circuit_data::CircuitData,
-    imports::{RUST_GATE, RUST_INSTRUCTION},
-    operations::{Operation, Param, PyNativeOperation},
+    imports::{QUANTUM_CIRCUIT, CUSTOM_GATE, CUSTOM_INSTRUCTION},
+    operations::{Operation, Param},
     packed_instruction::PackedOperation,
 };
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyList};
+
+/// Describes the kind of operation associated with this type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum CustomOperationKind {
+    /// A unitary operation in the circuit.
+    Gate,
+    /// A non-unitary operation in the circuit.
+    Instruction,
+}
 
 pub trait CustomOperation: Operation + Any + Debug + Send + Sync {
+    /// Return the custom label assigned to this instruction.
     fn label(&self) -> Option<&str> {
         None
     }
+
+    /// Returns an inverted version of this instruction and the computed parameters.
     fn inverse(&self, _params: &[Param]) -> Option<(PackedOperation, SmallVec<[Param; 3]>)> {
         None
     }
+
+    /// Returns a circuit representing the possible list of instructions that
+    /// this operation is composed of.
     fn definition(&self, _params: &[Param]) -> Option<CircuitData> {
         None
     }
+
+    /// If the instance is a gate, returns the unitary matrix that represents it,
+    /// if the parameters are correct. Otherwise, it returns None.
     fn matrix(&self, _params: &[Param]) -> Option<Array2<Complex64>> {
+        // TODO: Make fallible.
         None
     }
+
+    /// If the instance is a gate, returns the number of control qubits.
     fn num_ctrl_qubits(&self) -> Option<NonZero<u32>> {
         None
     }
+
+    /// If the instance is a gate, checks if it contains any control Qubits.
     fn is_controlled_gate(&self) -> bool {
         self.num_ctrl_qubits().is_some()
     }
-    fn create_py_op<'py>(
-        &self,
-        py: Python<'py>,
-        params: Option<SmallVec<[Param; 3]>>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let inner = self.clone_dyn().into();
-        let py_class = PyNativeOperation::new(inner, params);
-        match self.is_unitary() {
-            true => {
-                let custom_gate = RUST_GATE.get_bound(py);
-                custom_gate.call1((py_class,))
-            }
-            false => {
-                let custom_inst = RUST_INSTRUCTION.get_bound(py);
-                custom_inst.call1((py_class,))
-            }
-        }
-    }
-    fn py_type<'py>(&self, py: Python<'py>) -> PyResult<&Bound<'py, pyo3::types::PyType>> {
-        match self.is_unitary() {
-            true => Ok(RUST_GATE.get_bound(py).cast::<pyo3::types::PyType>()?),
-            false => Ok(RUST_INSTRUCTION
-                .get_bound(py)
-                .cast::<pyo3::types::PyType>()?),
-        }
-    }
+
+    /// Dynamic clone function to clone the original operation type.
+    ///
+    /// As long as the enclosed type `T: Clone`, this implementation will
+    /// trickle down to just calling the implementor's `Clone::clone()` method.
     fn clone_dyn(&self) -> Box<dyn CustomOperation>;
-    fn is_unitary(&self) -> bool;
+
+    /// Returns the kind of operation associated with this type.
+    fn kind(&self) -> CustomOperationKind;
 }
 
 impl dyn CustomOperation + 'static {
@@ -85,15 +90,308 @@ impl dyn CustomOperation + 'static {
     }
 }
 
+macro_rules! create_operation_view {
+    ($name:ident) => {
+        #[derive(Debug, Clone, Copy)]
+        pub struct $name<'a>(&'a dyn CustomOperation);
+
+        impl<'a> Operation for $name<'a> {
+            fn name(&self) -> &str {
+                self.0.name()
+            }
+
+            fn num_qubits(&self) -> u32 {
+                self.0.num_qubits()
+            }
+
+            fn num_clbits(&self) -> u32 {
+                self.0.num_clbits()
+            }
+
+            fn num_params(&self) -> u32 {
+                self.0.num_params()
+            }
+
+            fn directive(&self) -> bool {
+                self.0.directive()
+            }
+        }
+
+        impl<'a> $name<'a> {
+            /// Return the custom label assigned to this instruction.
+            pub fn label(&self) -> Option<&str> {
+                self.0.label()
+            }
+
+            /// Returns an inverted version of this instruction and the computed parameters.
+            pub fn inverse(
+                &self,
+                params: &[Param],
+            ) -> Option<(PackedOperation, SmallVec<[Param; 3]>)> {
+                self.0.inverse(params)
+            }
+
+            /// Returns a circuit representing the possible list of instructions that
+            /// this operation is composed of.
+            pub fn definition(&self, params: &[Param]) -> Option<CircuitData> {
+                self.0.definition(params)
+            }
+
+            /// Casts the dynamic reference into a reference to the original object.
+            pub fn downcast_ref<T: CustomOperation>(&self) -> Option<&T> {
+                self.0.downcast_ref()
+            }
+
+            /// Clones the inner operation dynamically
+            pub fn clone_dyn(&self) -> Box<dyn CustomOperation> {
+                self.0.clone_dyn()
+            }
+        }
+    };
+}
+
+create_operation_view! {NativeInstructionView}
+impl<'a> NativeInstructionView<'a> {
+    pub fn create_py_op<'py>(
+        &self,
+        py: Python<'py>,
+        params: Option<SmallVec<[Param; 3]>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.0.clone_dyn().into();
+        let py_class = PyNativeOperation::new(inner, params);
+        let custom_inst = CUSTOM_INSTRUCTION.get_bound(py);
+        custom_inst.call1((py_class,))
+    }
+
+    pub fn py_type<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyType>> {
+        Ok(CUSTOM_INSTRUCTION
+            .get_bound(py)
+            .clone()
+            .cast_into::<pyo3::types::PyType>()?)
+    }
+}
+
+create_operation_view! {NativeGateView}
+impl<'a> NativeGateView<'a> {
+    /// If the instance is a gate, returns the unitary matrix that represents it,
+    /// if the parameters are correct. Otherwise, it returns None.
+    pub fn matrix(&self, params: &[Param]) -> Option<Array2<Complex64>> {
+        // TODO: Make fallible.
+        self.0.matrix(params)
+    }
+
+    /// If the instance is a gate, returns the number of control qubits.
+    pub fn num_ctrl_qubits(&self) -> Option<NonZero<u32>> {
+        self.0.num_ctrl_qubits()
+    }
+
+    /// If the instance is a gate, checks if it contains any control Qubits.
+    pub fn is_controlled_gate(&self) -> bool {
+        self.0.is_controlled_gate()
+    }
+
+    pub fn create_py_op<'py>(
+        &self,
+        py: Python<'py>,
+        params: Option<SmallVec<[Param; 3]>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.0.clone_dyn().into();
+        let py_class = PyNativeOperation::new(inner, params);
+        let custom_inst = CUSTOM_GATE.get_bound(py);
+        custom_inst.call1((py_class,))
+    }
+
+    pub fn py_type<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyType>> {
+        Ok(CUSTOM_GATE
+            .get_bound(py)
+            .clone()
+            .cast_into::<pyo3::types::PyType>()?)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NativeOperationView<'a> {
+    Gate(NativeGateView<'a>),
+    Instruction(NativeInstructionView<'a>),
+}
+
+#[derive(Debug)]
+#[repr(align(8))]
+pub struct NativeOperation {
+    op: Box<dyn CustomOperation>,
+}
+
+impl NativeOperation {
+    pub fn view<'a>(&'a self) -> NativeOperationView<'a> {
+        match self.op.kind() {
+            CustomOperationKind::Gate => {
+                NativeOperationView::Gate(NativeGateView(self.op.as_ref()))
+            }
+            CustomOperationKind::Instruction => {
+                NativeOperationView::Instruction(NativeInstructionView(self.op.as_ref()))
+            }
+        }
+    }
+
+    pub fn kind(&self) -> CustomOperationKind {
+        self.op.kind()
+    }
+
+    pub fn label(&self) -> Option<&str> {
+        self.op.label()
+    }
+
+    pub fn definition(&self, params: &[Param]) -> Option<CircuitData> {
+        self.op.definition(params)
+    }
+
+    pub fn matrix(&self, params: &[Param]) -> Option<Array2<Complex64>> {
+        // TODO: Make this err
+        match self.view() {
+            NativeOperationView::Gate(gate) => gate.matrix(params),
+            NativeOperationView::Instruction(_) => None,
+        }
+    }
+
+    pub fn downcast_ref<T: CustomOperation>(&self) -> Option<&T> {
+        self.op.downcast_ref()
+    }
+}
+
+impl Operation for NativeOperation {
+    fn name(&self) -> &str {
+        self.op.name()
+    }
+
+    fn num_qubits(&self) -> u32 {
+        self.op.num_qubits()
+    }
+
+    fn num_clbits(&self) -> u32 {
+        self.op.num_clbits()
+    }
+
+    fn num_params(&self) -> u32 {
+        self.op.num_params()
+    }
+
+    fn directive(&self) -> bool {
+        self.op.directive()
+    }
+}
+
+impl Clone for NativeOperation {
+    fn clone(&self) -> Self {
+        Self {
+            op: self.op.clone_dyn(),
+        }
+    }
+}
+
+impl<T: CustomOperation> From<T> for NativeOperation {
+    fn from(value: T) -> Self {
+        let op = Box::new(value);
+        Self { op }
+    }
+}
+
+impl From<Box<dyn CustomOperation>> for NativeOperation {
+    fn from(value: Box<dyn CustomOperation>) -> Self {
+        Self { op: value }
+    }
+}
+
+#[pyclass(name = "NativeOperation", module = "qiskit.circuit.operation")]
+#[derive(Debug, Clone)]
+pub struct PyNativeOperation {
+    inner: NativeOperation,
+    parameters: Option<SmallVec<[Param; 3]>>,
+}
+
+#[pymethods]
+impl PyNativeOperation {
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    #[getter]
+    fn num_qubits(&self) -> u32 {
+        self.inner.num_qubits()
+    }
+
+    #[getter]
+    fn num_clbits(&self) -> u32 {
+        self.inner.num_clbits()
+    }
+
+    #[getter]
+    fn num_params(&self) -> u32 {
+        self.inner.num_params()
+    }
+
+    #[getter]
+    fn directive(&self) -> bool {
+        self.inner.directive()
+    }
+
+    #[getter]
+    fn label(&self) -> Option<&str> {
+        self.inner.label()
+    }
+
+    #[getter]
+    fn params<'a>(&'a self, py: Python<'a>) -> PyResult<Bound<'a, PyList>> {
+        PyList::new(
+            py,
+            self.parameters
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .cloned(),
+        )
+    }
+
+    #[getter]
+    fn definition<'py>(&'py self, py: Python<'py>) -> Option<Bound<'py, PyAny>> {
+        let params = self.parameters.as_deref().unwrap_or_default();
+        let circ_class = QUANTUM_CIRCUIT.get_bound(py);
+        self.inner
+            .definition(params)
+            .map(|circ| circ_class.call_method1("_from_circuit_data", (circ,)).ok())?
+    }
+
+    fn __array__<'py>(&'py self, dtype: Bound<'py, PyAny>) -> Option<Bound<'py, PyAny>> {
+        let py = dtype.py();
+        let params = self.parameters.as_deref().unwrap_or_default();
+        if let Some(matrix) = self.inner.matrix(params) {
+            let py_matrix = matrix.into_pyarray(py);
+            Some(py_matrix.into_any())
+        } else {
+            None
+        }
+    }
+}
+
+impl PyNativeOperation {
+    pub fn new(op: NativeOperation, parameters: Option<SmallVec<[Param; 3]>>) -> Self {
+        Self {
+            inner: op,
+            parameters,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::Qubit;
     use crate::circuit_data::CircuitData;
     use crate::custom_operations::CustomOperation;
+    use crate::custom_operations::CustomOperationKind;
     use crate::gate_matrix::H_GATE;
     use crate::gate_matrix::rx_gate;
 
-    use crate::operations::NativeOperation;
+    use crate::custom_operations::NativeOperation;
     use crate::operations::Operation;
     use crate::operations::OperationRef;
     use crate::operations::Param;
@@ -147,8 +445,8 @@ mod test {
             params.is_empty().then_some(aview2(&H_GATE).to_owned())
         }
 
-        fn is_unitary(&self) -> bool {
-            true
+        fn kind(&self) -> CustomOperationKind {
+            CustomOperationKind::Gate
         }
     }
 
@@ -208,8 +506,8 @@ mod test {
             }
         }
 
-        fn is_unitary(&self) -> bool {
-            true
+        fn kind(&self) -> CustomOperationKind {
+            CustomOperationKind::Gate
         }
     }
 
@@ -369,7 +667,7 @@ mod test {
                 unpacked_operation_h.call_method0("to_matrix")?.repr()?
             );
             println!("{}", unpacked_operation_h.getattr("params")?.repr()?);
-            print!("{}", unpacked_operation_h.getattr("definition")?.repr()?);
+            println!("{}", unpacked_operation_h.getattr("definition")?.repr()?);
 
             Ok(())
         })

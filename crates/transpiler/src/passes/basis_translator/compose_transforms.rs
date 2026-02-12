@@ -15,9 +15,9 @@ use indexmap::{IndexMap, IndexSet};
 use qiskit_circuit::Qubit;
 use qiskit_circuit::bit::QuantumRegister;
 use qiskit_circuit::circuit_data::CircuitData;
-use qiskit_circuit::custom_operations::CustomOperation;
+use qiskit_circuit::custom_operations::NativeOperation;
+use qiskit_circuit::custom_operations::{CustomOperation, CustomOperationKind};
 use qiskit_circuit::instruction::Parameters;
-use qiskit_circuit::operations::NativeOperation;
 use qiskit_circuit::parameter::parameter_expression::ParameterExpression;
 use qiskit_circuit::parameter::symbol_expr::Symbol;
 use qiskit_circuit::parameter_table::ParameterUuid;
@@ -203,7 +203,7 @@ impl CustomOperation for CustomDummy {
         Box::new(self.clone())
     }
 
-    fn is_unitary(&self) -> bool {
-        true
+    fn kind(&self) -> CustomOperationKind {
+        CustomOperationKind::Gate
     }
 }
