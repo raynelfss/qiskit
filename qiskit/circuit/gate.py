@@ -298,4 +298,4 @@ class RustGate(Gate):
         )
 
     def __array__(self, dtype=complex):
-        self._native_gate.__array__(dtype)
+        return self._native_gate.__array__(dtype)

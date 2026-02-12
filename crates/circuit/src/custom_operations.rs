@@ -311,7 +311,7 @@ mod test {
 
     // #[cfg(all(not(miri), test))]
     #[test]
-    #[cfg(not(miri))]
+    // #[cfg(not(miri))]
     fn try_python_custom_gate() {
         let mut circuit = CircuitData::with_capacity(1, 0, 1, 0.0.into())
             .expect("Circuit with small capacity should be built.");
@@ -329,9 +329,18 @@ mod test {
                 &[],
             )
             .expect("Instruction should be added to the circuit.");
+        circuit
+            .push_packed_operation(
+                NativeOperation::from(CustomH).into(),
+                None,
+                &[Qubit(0)],
+                &[],
+            )
+            .expect("Instruction should be added to the circuit.");
 
         // Retrieve operation
         let retrieved_gate = &circuit.data()[0];
+        let retrieved_h_gate = &circuit.data()[1];
 
         let OperationRef::CustomGate(gate_as_rx) = retrieved_gate.op.view() else {
             panic!("Gate should be a custom gate of type CustomH");
@@ -349,6 +358,18 @@ mod test {
         Python::attach(|py| -> PyResult<()> {
             let unpacked_operation = circuit.unpack_py_op(py, retrieved_gate)?.into_bound(py);
             println!("{}", unpacked_operation.repr()?);
+            println!("{}", unpacked_operation.call_method0("to_matrix")?.repr()?);
+            println!("{}", unpacked_operation.getattr("params")?.repr()?);
+            println!("{}", unpacked_operation.getattr("definition")?.repr()?);
+
+            let unpacked_operation_h = circuit.unpack_py_op(py, retrieved_h_gate)?.into_bound(py);
+            println!("{}", unpacked_operation_h.repr()?);
+            println!(
+                "{}",
+                unpacked_operation_h.call_method0("to_matrix")?.repr()?
+            );
+            println!("{}", unpacked_operation_h.getattr("params")?.repr()?);
+            print!("{}", unpacked_operation_h.getattr("definition")?.repr()?);
 
             Ok(())
         })

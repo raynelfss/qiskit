@@ -11,7 +11,6 @@
 // that they have been altered from the originals.
 
 use approx::relative_eq;
-use std::any::Any;
 use std::f64::consts::PI;
 use std::fmt::Debug;
 use std::num::NonZero;
@@ -3431,8 +3430,7 @@ impl NativeOperation {
     }
 
     pub fn downcast_ref<T: CustomOperation>(&self) -> Option<&T> {
-        let as_dyn: &dyn Any = &self.op;
-        as_dyn.downcast_ref()
+        self.op.downcast_ref()
     }
 
     pub fn create_py_op<'py>(
@@ -3575,8 +3573,15 @@ impl PyNativeOperation {
     }
 
     #[getter]
-    fn params(&self) -> Option<SmallVec<[Param; 3]>> {
-        self.parameters.clone()
+    fn params<'a>(&'a self, py: Python<'a>) -> PyResult<Bound<'a, PyList>> {
+        PyList::new(
+            py,
+            self.parameters
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .cloned(),
+        )
     }
 
     #[getter]
