@@ -1369,6 +1369,22 @@ impl DerefMut for PyTarget {
     }
 }
 
+impl PyTarget {
+    pub fn from_target(target: Target, py: Python<'_>) -> PyResult<Self> {
+        let gate_map = target
+            .gate_map
+            .iter()
+            .map(|(name, props)| (name.clone(), props.properties.clone()))
+            .into_py_dict(py)?;
+        Ok(Self {
+            inner: target,
+            gate_map: gate_map.unbind(),
+            non_global_basis: Default::default(),
+            non_global_basis_strict: Default::default(),
+        })
+    }
+}
+
 #[pymethods]
 impl PyTarget {
     /// Create a new ``Target`` object
@@ -1558,13 +1574,20 @@ impl PyTarget {
                 name.unwrap().to_string()
             }
         };
-        let properties = if properties.is_none() || instruction.is_variadic() {
+
+        let generate_default_props = || -> PyResult<_> {
             [(None::<String>, None::<InstructionProperties>)]
-                .into_py_dict(py)?
-                .unbind()
-        } else {
-            properties.unwrap()
+                .into_py_dict(py)
+                .map(|obj| obj.unbind())
         };
+        let properties = if instruction.is_variadic() {
+            generate_default_props()?
+        } else if let Some(properties) = properties {
+            properties
+        } else {
+            generate_default_props()?
+        };
+
         if self.inner.contains_key(&new_name) {
             return Err(PyAttributeError::new_err(format!(
                 "Instruction {new_name} is already in the target"
@@ -1576,7 +1599,7 @@ impl PyTarget {
             properties.extract(py)?,
             angle_bounds,
         )?;
-        self.gate_map.bind(py).set_item(&new_name, properties);
+        self.gate_map.bind(py).set_item(new_name, properties);
         Ok(())
     }
 
@@ -1690,6 +1713,49 @@ impl PyTarget {
         match self.inner.operation_names_for_qargs(&qargs) {
             Ok(set) => Ok(set),
             Err(e) => Err(PyKeyError::new_err(e.to_string())),
+        }
+    }
+
+    /// Return the non-global operation names for the target
+    ///
+    /// The non-global operations are those in the target which don't apply
+    /// on all qubits (for single qubit operations) or all multi-qubit qargs
+    /// (for multi-qubit operations).
+    ///
+    /// Args:
+    ///     strict_direction (bool): If set to ``True`` the multi-qubit
+    ///         operations considered as non-global respect the strict
+    ///         direction (or order of qubits in the qargs is significant). For
+    ///         example, if ``cx`` is defined on ``(0, 1)`` and ``ecr`` is
+    ///         defined over ``(1, 0)`` by default neither would be considered
+    ///         non-global, but if ``strict_direction`` is set ``True`` both
+    ///         ``cx`` and ``ecr`` would be returned.
+    ///
+    /// Returns:
+    ///     List[str]: A list of operation names for operations that aren't global in this target
+    fn get_non_global_operation_names(
+        &self,
+        py: Python<'_>,
+        strict_direction: bool,
+    ) -> PyResult<&Py<PyList>> {
+        if strict_direction {
+            if let Some(list) = self.non_global_basis_strict.get() {
+                Ok(list)
+            } else {
+                let list = PyList::new(
+                    py,
+                    self.inner.get_non_global_operation_names(strict_direction),
+                )?;
+                Ok(self.non_global_basis_strict.get_or_init(|| list.unbind()))
+            }
+        } else if let Some(list) = self.non_global_basis.get() {
+            Ok(list)
+        } else {
+            let list = PyList::new(
+                py,
+                self.inner.get_non_global_operation_names(strict_direction),
+            )?;
+            Ok(self.non_global_basis.get_or_init(|| list.unbind()))
         }
     }
 
@@ -1876,28 +1942,6 @@ impl PyTarget {
         )))
     }
 
-    /// Return the non-global operation names for the target
-    ///
-    /// The non-global operations are those in the target which don't apply
-    /// on all qubits (for single qubit operations) or all multi-qubit qargs
-    /// (for multi-qubit operations).
-    ///
-    /// Args:
-    ///     strict_direction (bool): If set to ``True`` the multi-qubit
-    ///         operations considered as non-global respect the strict
-    ///         direction (or order of qubits in the qargs is significant). For
-    ///         example, if ``cx`` is defined on ``(0, 1)`` and ``ecr`` is
-    ///         defined over ``(1, 0)`` by default neither would be considered
-    ///         non-global, but if ``strict_direction`` is set ``True`` both
-    ///         ``cx`` and ``ecr`` would be returned.
-    ///
-    /// Returns:
-    ///     List[str]: A list of operation names for operations that aren't global in this target
-    #[pyo3(signature = (/, strict_direction=false,))]
-    fn _get_non_global_operation_names(&self, strict_direction: bool) -> Vec<&str> {
-        self.get_non_global_operation_names(strict_direction)
-    }
-
     // Instance attributes
 
     /// The dt attribute.
@@ -1988,7 +2032,7 @@ impl PyTarget {
             .iter()
             .map(|entry| -> PyResult<_> {
                 let entry_dict = PyDict::new(py);
-                entry_dict.set_item("properties", bound_map.get_item(&entry.0)?)?;
+                entry_dict.set_item("properties", bound_map.get_item(entry.0)?)?;
                 entry_dict.set_item("instruction", &entry.1.instruction)?;
                 entry
                     .1
@@ -2072,7 +2116,7 @@ impl PyTarget {
             .extract::<HashMap<u32, HashSet<String>>>()?;
         for (gate, bounds) in bounds_map {
             self.inner
-                .add_owned_angle_bound(gate.as_str(), bounds)
+                .add_owned_angle_bound(gate, bounds)
                 .map_err(|err| TranspilerError::new_err(err.to_string()))?;
         }
         Ok(())

@@ -49,7 +49,7 @@ use rustworkx_core::petgraph::stable_graph::NodeIndex;
 use smallvec::SmallVec;
 
 use crate::passes::unitary_synthesis::{PARAM_SET, TWO_QUBIT_BASIS_SET};
-use crate::target::{Qargs, Target};
+use crate::target::{PyTarget, Qargs, Target};
 use qiskit_circuit::PhysicalQubit;
 use qiskit_util::getenv_use_multiple_threads;
 
@@ -485,7 +485,7 @@ fn py_run_consolidate_blocks(
     decomposer: Option<DecomposerType>,
     basis_gate_name: &str,
     force_consolidate: bool,
-    target: Option<&Target>,
+    target: Option<&PyTarget>,
     basis_gates: Option<HashSet<String>>,
     blocks: Option<Vec<Vec<usize>>>,
     runs: Option<Vec<Vec<usize>>>,
@@ -544,7 +544,7 @@ fn py_run_consolidate_blocks(
             consolidation_analysis_parallel(
                 dag,
                 decomposer,
-                target,
+                target.map(|v| &**v),
                 basis_gates.as_ref(),
                 basis_gate_name,
                 &blocks,
@@ -563,7 +563,7 @@ fn py_run_consolidate_blocks(
             let result = should_substitute(
                 dag,
                 decomposer.as_ref(),
-                target,
+                target.map(|v| &**v),
                 basis_gates.as_ref(),
                 basis_gate_name,
                 block,
@@ -587,7 +587,7 @@ fn py_run_consolidate_blocks(
 
             if run.len() == 1
                 && !is_supported(
-                    target,
+                    target.map(|v| &**v),
                     basis_gates.as_ref(),
                     first_inst.op.name(),
                     first_qubits,
