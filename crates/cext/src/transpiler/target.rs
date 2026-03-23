@@ -24,7 +24,7 @@ use qiskit_circuit::operations::{Operation, Param, StandardGate};
 use qiskit_circuit::packed_instruction::PackedOperation;
 use qiskit_circuit::parameter::parameter_expression::ParameterExpression;
 use qiskit_circuit::parameter::symbol_expr::Symbol;
-use qiskit_transpiler::target::{InstructionProperties, PyTarget, Qargs, TargetOperation};
+use qiskit_transpiler::target::{InstructionProperties, PyTarget, Qargs, Target, TargetOperation};
 use qiskit_util::IndexMap;
 use smallvec::{SmallVec, smallvec};
 
