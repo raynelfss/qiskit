@@ -514,6 +514,7 @@ impl State {
             let kind = match &node.kind {
                 InteractionKind::Synchronize => RoutedItemKind::Simple,
                 InteractionKind::TwoQ([a, b]) => {
+                    println!("{} and {} not within layout: {:?}", a.index(), b.index(), self.layout.iter_virtual().collect::<Vec<_>>());
                     let a = a.to_phys(&self.layout);
                     let b = b.to_phys(&self.layout);
                     if problem.target.neighbors.contains_edge(a, b) {
@@ -875,6 +876,7 @@ pub fn swap_map_trial<'a>(
         rng: Pcg64Mcg::seed_from_u64(seed),
         seed,
     };
+    println!("Is it here?");
     state.update_route(problem, &mut order, &problem.sabre.first_layer, None);
     state.populate_extended_set(problem);
 
@@ -923,6 +925,7 @@ pub fn swap_map_trial<'a>(
         for node in &routable_nodes {
             state.front_layer.remove(node);
         }
+        println!("Or is it there?");
         state.update_route(problem, &mut order, &routable_nodes, Some(current_swaps));
         // Ideally we'd know how to mutate the extended set directly, but since its limited size
         // easy to do better than just emptying it and rebuilding.

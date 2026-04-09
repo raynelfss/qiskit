@@ -10,6 +10,8 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use std::backtrace::Backtrace;
+
 use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
@@ -120,7 +122,11 @@ impl VirtualQubit {
     /// Get the physical qubit that currently corresponds to this index of virtual qubit in the
     /// given layout.
     pub fn to_phys(self, layout: &NLayout) -> PhysicalQubit {
-        layout.virt_to_phys[self.index()]
+        if let Some(phys) = layout.virt_to_phys.get(self.index()) {
+            *phys
+        } else {
+            panic!("{} not in range {}, traceback: {}", self.index(), layout.virt_to_phys.len(), Backtrace::force_capture())
+        }
     }
 }
 

@@ -352,6 +352,7 @@ fn layout_trial<'a>(
     starting_layout: &'_ [Option<PhysicalQubit>],
 ) -> RoutingResult<'a> {
     let num_physical_qubits: u32 = problem.target.neighbors.num_qubits().try_into().unwrap();
+    println!("Target neighbors: {:?}, and num_qubits {} vs {}", problem.target.neighbors.clone().take(), problem.target.neighbors.num_qubits(), problem.target.num_qubits());
     let mut rng = Pcg64Mcg::seed_from_u64(seed);
 
     // This is purely for RNG compatibility during a refactor.
@@ -382,8 +383,12 @@ fn layout_trial<'a>(
             physical_qubits.shuffle(&mut rng);
             physical_qubits
         };
+        println!("Physical qubits {:?}", physical_qubits);
         NLayout::from_virtual_to_physical(physical_qubits).unwrap()
     };
+
+    println!("Initial layout is enough? {:?}", initial_layout.iter_virtual().collect::<Vec<_>>());
+    println!("Initial layout is enough? {}", problem.dag.num_qubits());
 
     // Sabre routing currently enforces that control-flow blocks return to their starting layout,
     // which means they don't actually affect any heuristics that affect our layout choice.
