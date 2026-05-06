@@ -34,7 +34,23 @@ use qiskit_circuit::{PhysicalQubit, VirtualQubit, vf2};
 use super::error_map::ErrorMap;
 use crate::target::{Qargs, QargsRef, Target, TargetOperation};
 
+// Import Python Exception MultiQEncountered only for alias usage.
 create_exception!(qiskit, MultiQEncountered, pyo3::exceptions::PyException);
+
+// VF2 Layout errors
+#[derive(Debug, thiserror::Error)]
+pub enum VF2LayoutError {
+    #[error("")]
+    MultiQEncountered,
+}
+
+impl From<VF2LayoutError> for PyErr {
+    fn from(value: VF2LayoutError) -> Self {
+        match value {
+            VF2LayoutError::MultiQEncountered => MultiQEncountered::new_err(""),
+        }
+    }
+}
 
 #[pyclass(name = "VF2PassConfiguration", skip_from_py_object)]
 #[derive(Clone, Debug)]
@@ -321,7 +337,7 @@ impl<T: Default> VirtualInteractions<T> {
     ///
     /// The weighter should return `true` on success, or `false` if no weight could be created
     /// (indicating a necessary failure of the layout pass).
-    fn try_from_dag<W>(dag: &DAGCircuit, weighter: W) -> PyResult<Option<Self>>
+    fn try_from_dag<W>(dag: &DAGCircuit, weighter: W) -> Result<Option<Self>, VF2LayoutError>
     where
         W: Fn(&mut T, &PackedInstruction, usize) -> bool,
     {
@@ -342,7 +358,7 @@ impl<T: Default> VirtualInteractions<T> {
 
     /// Create a set of virtual interactions from a DAG, and a weighter function for a single
     /// interaction.
-    fn from_dag<W>(dag: &DAGCircuit, weighter: W) -> PyResult<Self>
+    fn from_dag<W>(dag: &DAGCircuit, weighter: W) -> Result<Self, VF2LayoutError>
     where
         W: Fn(&mut T, &PackedInstruction, usize),
     {
@@ -360,7 +376,7 @@ impl<T: Default> VirtualInteractions<T> {
         wire_map: &[VirtualQubit],
         repeats: usize,
         weighter: &W,
-    ) -> PyResult<bool>
+    ) -> Result<bool, VF2LayoutError>
     where
         W: Fn(&mut T, &PackedInstruction, usize) -> bool,
     {
@@ -418,7 +434,7 @@ impl<T: Default> VirtualInteractions<T> {
                         self.graph.add_edge(node0, node1, weight);
                     }
                 }
-                _ => return Err(MultiQEncountered::new_err("")),
+                _ => return Err(VF2LayoutError::MultiQEncountered),
             }
         }
         Ok(true)
@@ -732,14 +748,25 @@ where
 }
 
 #[pyfunction]
-#[pyo3(signature = (dag, target, config, *, strict_direction=false, avg_error_map=None))]
-pub fn vf2_layout_pass_average(
+#[pyo3(signature = (dag, target, config, *, strict_direction=false, avg_error_map=None), name="vf2_layout_pass_average")]
+pub fn py_vf2_layout_pass_average(
     dag: &DAGCircuit,
     target: &Target,
     config: &Vf2PassConfiguration,
     strict_direction: bool,
     avg_error_map: Option<&ErrorMap>,
 ) -> PyResult<Vf2PassReturn> {
+    vf2_layout_pass_average(dag, target, config, strict_direction, avg_error_map)
+        .map_err(|e| MultiQEncountered::new_err(e.to_string()))
+}
+
+pub fn vf2_layout_pass_average(
+    dag: &DAGCircuit,
+    target: &Target,
+    config: &Vf2PassConfiguration,
+    strict_direction: bool,
+    avg_error_map: Option<&ErrorMap>,
+) -> anyhow::Result<Vf2PassReturn> {
     let add_interaction = |count: &mut usize, _: &PackedInstruction, repeats: usize| {
         *count += repeats;
     };
@@ -800,12 +827,21 @@ pub fn vf2_layout_pass_average(
 }
 
 #[pyfunction]
-#[pyo3(signature = (dag, target, config))]
-pub fn vf2_layout_pass_exact(
+#[pyo3(signature = (dag, target, config), name = "vf2_layout_pass_exact")]
+pub fn py_vf2_layout_pass_exact(
     dag: &DAGCircuit,
     target: &Target,
     config: &Vf2PassConfiguration,
 ) -> PyResult<Vf2PassReturn> {
+    vf2_layout_pass_exact(dag, target, config)
+        .map_err(|e| MultiQEncountered::new_err(e.to_string()))
+}
+
+pub fn vf2_layout_pass_exact(
+    dag: &DAGCircuit,
+    target: &Target,
+    config: &Vf2PassConfiguration,
+) -> anyhow::Result<Vf2PassReturn> {
     let Some((mut coupling_graph, interner)) = build_exact_coupling_map(target) else {
         return Ok(Vf2PassReturn::NoSolution);
     };
@@ -894,8 +930,8 @@ pub fn vf2_layout_pass_exact(
 }
 
 pub fn vf2_layout_mod(m: &Bound<PyModule>) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(vf2_layout_pass_average))?;
-    m.add_wrapped(wrap_pyfunction!(vf2_layout_pass_exact))?;
+    m.add_wrapped(wrap_pyfunction!(py_vf2_layout_pass_average))?;
+    m.add_wrapped(wrap_pyfunction!(py_vf2_layout_pass_exact))?;
     m.add("MultiQEncountered", m.py().get_type::<MultiQEncountered>())?;
     m.add(
         "VF2PassConfiguration",

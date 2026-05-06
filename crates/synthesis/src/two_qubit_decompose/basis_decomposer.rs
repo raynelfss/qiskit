@@ -11,6 +11,7 @@
 // that they have been altered from the originals.
 
 use approx::{abs_diff_eq, relative_eq};
+use faer::linalg::evd::EvdError;
 use num_complex::{Complex64, ComplexFloat};
 use num_traits::Zero;
 use smallvec::{SmallVec, smallvec};
@@ -131,7 +132,7 @@ impl TwoQubitBasisDecomposer {
     }
 
     /// Compute the number of basis gates needed for a given unitary
-    pub fn num_basis_gates_inner(&self, unitary: ArrayView2<Complex64>) -> PyResult<usize> {
+    pub fn num_basis_gates_inner(&self, unitary: ArrayView2<Complex64>) -> Result<usize, EvdError> {
         let u = ndarray_to_faer(unitary);
         __num_basis_gates(self.basis_decomposer.b, self.basis_fidelity, u)
     }

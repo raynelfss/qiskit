@@ -13,6 +13,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use anyhow::anyhow;
 use hashbrown::HashSet;
 use ndarray::aview2;
 use rand::prelude::*;
@@ -40,8 +41,8 @@ use super::route::{RoutingProblem, RoutingResult, RoutingTarget, swap_map, swap_
 
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
-#[pyo3(signature = (dag, target, heuristic, max_iterations, num_swap_trials, num_random_trials, seed=None, partial_layouts=vec![], skip_routing=false))]
-pub fn sabre_layout_and_routing(
+#[pyo3(signature = (dag, target, heuristic, max_iterations, num_swap_trials, num_random_trials, seed=None, partial_layouts=vec![], skip_routing=false), name = "sabre_layout_and_routing")]
+pub fn py_sabre_layout_and_routing(
     dag: &mut DAGCircuit,
     target: &Target,
     heuristic: &Heuristic,
@@ -52,8 +53,34 @@ pub fn sabre_layout_and_routing(
     partial_layouts: Vec<Vec<Option<PhysicalQubit>>>,
     skip_routing: bool,
 ) -> PyResult<(DAGCircuit, NLayout, NLayout)> {
+    sabre_layout_and_routing(
+        dag,
+        target,
+        heuristic,
+        max_iterations,
+        num_swap_trials,
+        num_random_trials,
+        seed,
+        partial_layouts,
+        skip_routing,
+    )
+    .map_err(|e| TranspilerError::new_err(e.to_string()))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn sabre_layout_and_routing(
+    dag: &mut DAGCircuit,
+    target: &Target,
+    heuristic: &Heuristic,
+    max_iterations: usize,
+    num_swap_trials: usize,
+    num_random_trials: usize,
+    seed: Option<u64>,
+    partial_layouts: Vec<Vec<Option<PhysicalQubit>>>,
+    skip_routing: bool,
+) -> anyhow::Result<(DAGCircuit, NLayout, NLayout)> {
     let Some(num_physical_qubits) = target.num_qubits else {
-        return Err(TranspilerError::new_err(
+        return Err(anyhow!(
             "given 'Target' was not initialized with a qubit count",
         ));
     };
@@ -63,7 +90,7 @@ pub fn sabre_layout_and_routing(
         .flatten()
         .any(|q| q.is_some_and(|q| q.index() >= num_physical_qubits))
     {
-        return Err(TranspilerError::new_err(
+        return Err(anyhow!(
             "partial layouts contained out-of-range physical qubits",
         ));
     }
@@ -77,7 +104,7 @@ pub fn sabre_layout_and_routing(
             return Ok((out, trivial.clone(), trivial));
         }
         Err(e @ TargetCouplingError::MultiQ(_)) => {
-            return Err(TranspilerError::new_err(e.to_string()));
+            return Err(e.into());
         }
     };
     let mut starting_layouts = (0..num_random_trials)

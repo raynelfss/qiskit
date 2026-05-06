@@ -13,6 +13,7 @@
 pub mod angle_bound_registry;
 pub mod commutation_checker;
 pub mod equivalence;
+pub mod errors;
 pub mod neighbors;
 pub mod passes;
 pub mod standard_equivalence_library;

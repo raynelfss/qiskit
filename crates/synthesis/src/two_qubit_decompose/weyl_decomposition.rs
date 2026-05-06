@@ -11,6 +11,7 @@
 // that they have been altered from the originals.
 
 use approx::abs_diff_eq;
+use faer::linalg::evd::EvdError;
 use num_complex::{Complex, Complex64, ComplexFloat};
 use smallvec::SmallVec;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI, TAU};
@@ -183,19 +184,19 @@ pub fn py_decompose_two_qubit_product_gate(
 #[pyfunction]
 pub fn weyl_coordinates(py: Python, unitary: PyReadonlyArray2<Complex64>) -> PyResult<Py<PyAny>> {
     let array = unitary.as_array();
-    Ok(__weyl_coordinates(ndarray_to_faer(array))?
+    Ok(__weyl_coordinates(ndarray_to_faer(array))
+        .map_err(|e| QiskitError::new_err(format!("{e:?}")))?
         .to_vec()
         .into_pyarray(py)
         .into_any()
         .unbind())
 }
 
-fn __weyl_coordinates(unitary: MatRef<c64>) -> PyResult<[f64; 3]> {
+fn __weyl_coordinates(unitary: MatRef<c64>) -> Result<[f64; 3], EvdError> {
     let uscaled = Scale(C1 / unitary.determinant().powf(0.25)) * unitary;
     let uup = transform_from_magic_basis(uscaled);
     let mut darg: Vec<_> = (uup.transpose() * &uup)
-        .eigenvalues()
-        .map_err(|e| QiskitError::new_err(format!("{e:?}")))?
+        .eigenvalues()?
         .into_iter()
         .map(|x| -x.arg() / 2.0)
         .collect();
@@ -248,14 +249,14 @@ pub fn _num_basis_gates(
     unitary: PyReadonlyArray2<Complex<f64>>,
 ) -> PyResult<usize> {
     let u = ndarray_to_faer(unitary.as_array());
-    __num_basis_gates(basis_b, basis_fidelity, u)
+    __num_basis_gates(basis_b, basis_fidelity, u).map_err(|e| QiskitError::new_err(format!("{e:?}")))
 }
 
 pub(super) fn __num_basis_gates(
     basis_b: f64,
     basis_fidelity: f64,
     unitary: MatRef<c64>,
-) -> PyResult<usize> {
+) -> Result<usize, EvdError> {
     let [a, b, c] = __weyl_coordinates(unitary)?;
     let traces = [
         c64::new(

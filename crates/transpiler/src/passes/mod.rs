@@ -34,6 +34,7 @@ mod convert_to_pauli_rotations;
 mod dense_layout;
 mod disjoint_layout;
 mod elide_permutations;
+pub mod errors;
 mod filter_op_nodes;
 mod gate_direction;
 mod gates_in_basis;

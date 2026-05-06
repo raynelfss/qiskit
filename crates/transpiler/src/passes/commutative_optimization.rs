@@ -20,12 +20,14 @@ use pyo3::{Bound, PyResult, pyfunction, wrap_pyfunction};
 use qiskit_circuit::instruction::Parameters;
 use smallvec::smallvec;
 
-use crate::commutation_checker::{CommutationChecker, try_matrix_with_definition};
+use crate::commutation_checker::{
+    CommutationAnalysisError, CommutationChecker, try_matrix_with_definition,
+};
 use crate::passes::remove_identity_equiv::{
-    MINIMUM_TOL, average_gate_fidelity_below_tol, is_identity_equiv,
+    MINIMUM_TOL, RemoveIdentityEquivError, average_gate_fidelity_below_tol, is_identity_equiv,
 };
 use qiskit_circuit::circuit_instruction::OperationFromPython;
-use qiskit_circuit::dag_circuit::DAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGCircuitInnerError};
 use qiskit_circuit::operations::{
     Operation, OperationRef, Param, PauliBased, PauliProductMeasurement, PauliProductRotation,
     StandardGate, multiply_param, radd_param,
@@ -34,6 +36,40 @@ use qiskit_circuit::{BlocksMode, Clbit, NoBlocks, Qubit, imports};
 
 use qiskit_circuit::VarsMode;
 use qiskit_circuit::packed_instruction::PackedInstruction;
+
+/// Possible errors that can occur during the `CommutativeOptimization` pass
+#[derive(Debug, thiserror::Error)]
+pub enum CommutativeOptimizationError {
+    #[error(transparent)]
+    DAGCircuit(#[from] DAGCircuitInnerError),
+    #[error(transparent)]
+    RemoveIdentityEq(#[from] RemoveIdentityEquivError),
+    #[error(transparent)]
+    CommutationAnalysis(#[from] CommutationAnalysisError),
+    // TODO: Replace with Param rust native error.
+    #[error(transparent)]
+    PyParamError(PyErr),
+    #[error(transparent)]
+    PyMergeTwoPauliEvolutions(PyErr),
+}
+
+impl From<CommutativeOptimizationError> for PyErr {
+    fn from(value: CommutativeOptimizationError) -> Self {
+        match value {
+            CommutativeOptimizationError::DAGCircuit(dagcircuit_inner_error) => {
+                dagcircuit_inner_error.into()
+            }
+            CommutativeOptimizationError::RemoveIdentityEq(remove_identity_equiv_error) => {
+                remove_identity_equiv_error.into()
+            }
+            CommutativeOptimizationError::PyParamError(py_err)
+            | CommutativeOptimizationError::PyMergeTwoPauliEvolutions(py_err) => py_err,
+            CommutativeOptimizationError::CommutationAnalysis(commutation_analysis_error) => {
+                commutation_analysis_error.into()
+            }
+        }
+    }
+}
 
 /// Holds the action for each node in the original DAGCircuit.
 #[derive(Clone, Debug)]
@@ -341,7 +377,7 @@ fn commute(
     approximation_degree: f64,
     matrix_max_num_qubits: u32,
     commutation_checker: &mut CommutationChecker,
-) -> PyResult<bool> {
+) -> Result<bool, CommutativeOptimizationError> {
     let qargs1 = dag.get_qargs(inst1.qubits);
     let qargs2 = dag.get_qargs(inst2.qubits);
     let cargs1 = dag.get_cargs(inst1.clbits);
@@ -399,7 +435,7 @@ fn try_merge(
     inst2: &PackedInstruction,
     tol: f64,
     matrix_max_num_qubits: u32,
-) -> PyResult<(bool, Option<PackedInstruction>, f64)> {
+) -> Result<(bool, Option<PackedInstruction>, f64), CommutativeOptimizationError> {
     if inst1.op.num_qubits() != inst2.op.num_qubits() {
         return Ok((false, None, 0.));
     }
@@ -423,7 +459,10 @@ fn try_merge(
     {
         // Check whether the two gates are self-inverse.
         if let Some((gate1inv, params1inv)) = gate1.inverse(params1) {
-            if (gate1inv == gate2) && compare_params(&params1inv, params2)? {
+            if (gate1inv == gate2)
+                && compare_params(&params1inv, params2)
+                    .map_err(CommutativeOptimizationError::PyParamError)?
+            {
                 return Ok((true, None, 0.));
             }
         }
@@ -508,7 +547,8 @@ fn try_merge(
                         py_op: std::sync::OnceLock::new(),
                     }))
                 }
-            })?;
+            })
+            .map_err(CommutativeOptimizationError::PyMergeTwoPauliEvolutions)?;
 
             if let Some(merged_instruction) = merged_instruction {
                 if let Some(phase_update) = is_identity_equiv(
@@ -562,15 +602,29 @@ fn disjoint_instructions(
     !qargs1.iter().any(|e| qargs2.contains(e)) && !cargs1.iter().any(|e| cargs2.contains(e))
 }
 
-#[pyfunction]
-#[pyo3(name = "commutative_optimization")]
+#[pyfunction(name = "commutative_optimization")]
 #[pyo3(signature = (dag, commutation_checker, approximation_degree=1., matrix_max_num_qubits=0))]
-pub fn run_commutative_optimization(
+fn py_run_commutative_optimization(
     dag: &mut DAGCircuit,
     commutation_checker: &mut CommutationChecker,
     approximation_degree: f64,
     matrix_max_num_qubits: u32,
 ) -> PyResult<Option<DAGCircuit>> {
+    run_commutative_optimization(
+        dag,
+        commutation_checker,
+        approximation_degree,
+        matrix_max_num_qubits,
+    )
+    .map_err(Into::into)
+}
+
+pub fn run_commutative_optimization(
+    dag: &mut DAGCircuit,
+    commutation_checker: &mut CommutationChecker,
+    approximation_degree: f64,
+    matrix_max_num_qubits: u32,
+) -> Result<Option<DAGCircuit>, CommutativeOptimizationError> {
     let tol = MINIMUM_TOL.max(1. - approximation_degree);
     let error_cutoff_fn = |_inst: &PackedInstruction| -> f64 { tol };
 
@@ -578,7 +632,9 @@ pub fn run_commutative_optimization(
     // We will use it to intern qubits of canonicalized instructions.
     // (In theory, we could also change qubits when merging instructions, however
     // this does not happen right now).
-    let mut new_dag = dag.copy_empty_like_with_same_capacity(VarsMode::Alike, BlocksMode::Keep)?;
+    let mut new_dag = dag
+        .copy_empty_like_with_same_capacity(VarsMode::Alike, BlocksMode::Keep)
+        .map_err(CommutativeOptimizationError::DAGCircuit)?;
 
     let node_indices = dag.topological_op_nodes(false).collect::<Vec<_>>();
     let num_nodes = node_indices.len();
@@ -706,6 +762,6 @@ pub fn run_commutative_optimization(
 }
 
 pub fn commutative_optimization_mod(m: &Bound<PyModule>) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(run_commutative_optimization))?;
+    m.add_wrapped(wrap_pyfunction!(py_run_commutative_optimization))?;
     Ok(())
 }

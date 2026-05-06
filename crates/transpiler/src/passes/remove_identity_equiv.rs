@@ -12,6 +12,7 @@
 use num_complex::Complex64;
 use num_complex::ComplexFloat;
 use pyo3::prelude::*;
+use qiskit_circuit::dag_circuit::DAGCircuitInnerError;
 use rayon::prelude::*;
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
 use rustworkx_core::petgraph::visit::NodeIndexable;
@@ -27,6 +28,27 @@ use qiskit_circuit::operations::StandardGate;
 use qiskit_circuit::operations::{Operation, OperationRef};
 use qiskit_circuit::packed_instruction::PackedInstruction;
 use qiskit_util::getenv_use_multiple_threads;
+
+/// Possible errors returned by the `RemoveIdentityEquiv` pass.
+#[derive(Debug, thiserror::Error)]
+pub enum RemoveIdentityEquivError {
+    // TODO: Replace with rust-native DAGCircuit Error
+    #[error(transparent)]
+    DAGCircuit(#[from] DAGCircuitInnerError),
+    #[error(transparent)]
+    PyPauliRotationTraceAndDim(PyErr),
+}
+
+impl From<RemoveIdentityEquivError> for PyErr {
+    fn from(value: RemoveIdentityEquivError) -> Self {
+        match value {
+            RemoveIdentityEquivError::DAGCircuit(dagcircuit_inner_error) => {
+                dagcircuit_inner_error.into()
+            }
+            RemoveIdentityEquivError::PyPauliRotationTraceAndDim(py_err) => py_err,
+        }
+    }
+}
 
 // The point at which to start running the analysis in parallel.
 // This value was found experimentally during the development of
@@ -80,7 +102,7 @@ pub fn is_identity_equiv<F>(
     matrix_from_definition: bool,
     matrix_from_definition_max_qubits: Option<u32>,
     error_cutoff_fn: F,
-) -> PyResult<Option<f64>>
+) -> Result<Option<f64>, RemoveIdentityEquivError>
 where
     F: Fn(&PackedInstruction) -> f64,
 {
@@ -196,13 +218,17 @@ where
     // Special handling for pauli evolution gates.
     if view.name() == "PauliEvolution" {
         if let OperationRef::Gate(py_gate) = view {
-            let result = Python::attach(|py| -> PyResult<Option<(Complex64, usize)>> {
-                let result = imports::PAULI_ROTATION_TRACE_AND_DIM
-                    .get_bound(py)
-                    .call1((py_gate.instruction.clone_ref(py),))?
-                    .extract()?;
-                Ok(result)
-            })?;
+            let result = Python::attach(
+                |py| -> Result<Option<(Complex64, usize)>, RemoveIdentityEquivError> {
+                    let result = || -> PyResult<_> {
+                        imports::PAULI_ROTATION_TRACE_AND_DIM
+                            .get_bound(py)
+                            .call1((py_gate.instruction.clone_ref(py),))?
+                            .extract()
+                    };
+                    result().map_err(RemoveIdentityEquivError::PyPauliRotationTraceAndDim)
+                },
+            )?;
 
             if let Some((tr_over_dim, dim)) = result {
                 return Ok(average_gate_fidelity_below_tol(
@@ -264,7 +290,7 @@ pub fn run_remove_identity_equiv(
     dag: &mut DAGCircuit,
     approx_degree: Option<f64>,
     target: Option<&Target>,
-) -> PyResult<()> {
+) -> Result<(), RemoveIdentityEquivError> {
     // Minimum threshold to compare average gate fidelity to 1. This is chosen to account
     // for roundoff errors and to be consistent with other places.
     let get_error_cutoff = |inst: &PackedInstruction| -> f64 {
@@ -325,11 +351,11 @@ pub fn run_remove_identity_equiv(
                         None
                     }
                 })
-                .collect::<PyResult<Vec<(NodeIndex, f64)>>>()?
+                .collect::<Result<Vec<(NodeIndex, f64)>, RemoveIdentityEquivError>>()?
         } else {
             dag.op_nodes(false)
                 .filter_map(|x| process_node(x.0, x.1).transpose())
-                .collect::<PyResult<Vec<(NodeIndex, f64)>>>()?
+                .collect::<Result<Vec<(NodeIndex, f64)>, RemoveIdentityEquivError>>()?
         };
 
     for (node, phase_update) in remove_list {

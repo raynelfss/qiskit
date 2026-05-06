@@ -17,12 +17,13 @@ use pyo3::prelude::*;
 use pyo3::{Bound, PyResult, pyfunction, wrap_pyfunction};
 
 use indexmap::IndexMap;
+use qiskit_circuit::packed_instruction::PackedOperation;
 use smallvec::{SmallVec, smallvec};
 
 use super::analyze_commutations;
-use crate::commutation_checker::CommutationChecker;
+use crate::commutation_checker::{CommutationAnalysisError, CommutationChecker};
 use qiskit_circuit::Qubit;
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGCircuitInnerError, NodeType};
 use qiskit_circuit::operations::{Operation, Param, StandardGate};
 use qiskit_synthesis::QiskitError;
 
@@ -65,14 +66,55 @@ struct CancellationSetKey {
     second_index: Option<usize>,
 }
 
-#[pyfunction]
+/// Possible errors during the Commutation Cancellation pass
+#[derive(Debug, thiserror::Error)]
+pub enum CommutationCancelError {
+    #[error("Rotational gate with parameter expression encountered in cancellation {0:?}")]
+    RotationalParameter(PackedOperation),
+    #[error("Angle for operation {0} is not defined")]
+    UndefinedAngle(String),
+    // TODO: Replace with rust-native DAGCircuit
+    #[error(transparent)]
+    DAGCircuit(#[from] DAGCircuitInnerError),
+    #[error(transparent)]
+    Analysis(#[from] CommutationAnalysisError),
+}
+
+impl From<CommutationCancelError> for PyErr {
+    fn from(value: CommutationCancelError) -> Self {
+        match value {
+            CommutationCancelError::RotationalParameter(_) => {
+                QiskitError::new_err(value.to_string())
+            }
+            CommutationCancelError::UndefinedAngle(_) => PyRuntimeError::new_err(value.to_string()),
+            CommutationCancelError::Analysis(commutation_analysis_error) => {
+                commutation_analysis_error.into()
+            }
+            CommutationCancelError::DAGCircuit(dagcircuit_inner_error) => {
+                dagcircuit_inner_error.into()
+            }
+        }
+    }
+}
+
+#[pyfunction(name = "cancel_commutations")]
 #[pyo3(signature = (dag, commutation_checker, basis_gates=None, approximation_degree=1.))]
-pub fn cancel_commutations(
+fn py_cancel_commutations(
     dag: &mut DAGCircuit,
     commutation_checker: &mut CommutationChecker,
     basis_gates: Option<Vec<String>>,
     approximation_degree: f64,
 ) -> PyResult<()> {
+    cancel_commutations(dag, commutation_checker, basis_gates, approximation_degree)
+        .map_err(Into::into)
+}
+
+pub fn cancel_commutations(
+    dag: &mut DAGCircuit,
+    commutation_checker: &mut CommutationChecker,
+    basis_gates: Option<Vec<String>>,
+    approximation_degree: f64,
+) -> Result<(), CommutationCancelError> {
     let basis = basis_gates.unwrap_or_default();
     let z_var_gate = dag
         .get_op_counts()
@@ -236,10 +278,9 @@ pub fn cancel_commutations(
                         let node_angle = match node_op.params_view().first() {
                             Some(Param::Float(f)) => *f,
                             _ => {
-                                return Err(QiskitError::new_err(format!(
-                                    "Rotational gate with parameter expression encountered in cancellation {:?}",
-                                    node_op.op
-                                )));
+                                return Err(CommutationCancelError::RotationalParameter(
+                                    node_op.op.clone(),
+                                ));
                             }
                         };
                         let phase_shift = z_phase_shift(node_op_name, node_angle);
@@ -250,9 +291,9 @@ pub fn cancel_commutations(
                             "s" => Ok((FRAC_PI_2, z_phase_shift("p", FRAC_PI_2))),
                             "z" => Ok((PI, z_phase_shift("p", PI))),
                             "x" => Ok((PI, FRAC_PI_2)),
-                            _ => Err(PyRuntimeError::new_err(format!(
-                                "Angle for operation {node_op_name} is not defined"
-                            ))),
+                            _ => Err(CommutationCancelError::UndefinedAngle(
+                                node_op_name.to_owned(),
+                            )),
                         }
                     }?;
                     total_angle += node_angle;
@@ -279,7 +320,8 @@ pub fn cancel_commutations(
                     dag.insert_1q_on_incoming_qubit((*new_op, &[total_angle]), cancel_set[0]);
                 }
 
-                dag.add_global_phase(&Param::Float(total_phase))?;
+                dag.add_global_phase(&Param::Float(total_phase))
+                    .map_err(CommutationCancelError::DAGCircuit)?;
 
                 for node in cancel_set {
                     dag.remove_op_node(*node);
@@ -292,6 +334,6 @@ pub fn cancel_commutations(
 }
 
 pub fn commutation_cancellation_mod(m: &Bound<PyModule>) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(cancel_commutations))?;
+    m.add_wrapped(wrap_pyfunction!(py_cancel_commutations))?;
     Ok(())
 }

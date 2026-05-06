@@ -19,14 +19,23 @@ use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
 use qiskit_circuit::operations::{OperationRef, StandardInstruction};
 use qiskit_circuit::packed_instruction::{PackedInstruction, PackedOperation};
 
+use crate::errors::NativeTranspilerError;
+
 const PARALLEL_THRESHOLD: usize = 150;
 
 #[pyfunction]
 #[pyo3(name = "barrier_before_final_measurements", signature=(dag, label=None))]
-pub fn run_barrier_before_final_measurements(
+pub fn py_run_barrier_before_final_measurements(
     dag: &mut DAGCircuit,
     label: Option<String>,
 ) -> PyResult<()> {
+    run_barrier_before_final_measurements(dag, label).map_err(Into::into)
+}
+
+pub fn run_barrier_before_final_measurements(
+    dag: &mut DAGCircuit,
+    label: Option<String>,
+) -> Result<(), NativeTranspilerError> {
     // Get a list of the node indices which are final measurement or barriers that are ancestors
     // of a given qubit's output node.
     let find_final_nodes = |[_in_index, out_index]: &[NodeIndex; 2]| -> Vec<NodeIndex> {
@@ -150,14 +159,16 @@ pub fn run_barrier_before_final_measurements(
         label,
         #[cfg(feature = "cache_pygates")]
         None,
-    )?;
+    )
+    .map_err(NativeTranspilerError::DAGCircuit)?;
     for inst in final_packed_ops {
-        dag.push_back(inst)?;
+        dag.push_back(inst)
+            .map_err(NativeTranspilerError::DAGCircuit)?;
     }
     Ok(())
 }
 
 pub fn barrier_before_final_measurements_mod(m: &Bound<PyModule>) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(run_barrier_before_final_measurements))?;
+    m.add_wrapped(wrap_pyfunction!(py_run_barrier_before_final_measurements))?;
     Ok(())
 }

@@ -11,10 +11,12 @@
 // that they have been altered from the originals.
 
 use crate::TranspilerError;
+use crate::errors::NativeTranspilerError;
 use crate::passes::schedule_analysis::{NodeDurations, PyNodeDurations};
 use crate::target::Target;
 use ::hashbrown::HashSet;
 use foldhash::fast::RandomState;
+use anyhow::anyhow;
 use indexmap::IndexMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -24,6 +26,32 @@ use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
 use qiskit_circuit::operations::Param;
 use qiskit_circuit::operations::{Operation, OperationRef, StandardInstruction};
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
+
+/// Possible errors during the `ConstrainedReschedule` pass
+#[derive(Debug, thiserror::Error)]
+pub enum ConstrainedRescheduleError {
+    #[error(transparent)]
+    Generic(#[from] anyhow::Error),
+    #[error("Missing value for key '{0:?}' in node_start_time")]
+    MissingVal(NodeIndex),
+    #[error("Delay instruction missing duration parameter")]
+    DelayNoValue,
+    #[error(transparent)]
+    PyParamExtraction(PyErr),
+}
+
+impl From<ConstrainedRescheduleError> for PyErr {
+    fn from(value: ConstrainedRescheduleError) -> Self {
+        match value {
+            ConstrainedRescheduleError::Generic(error) => {
+                TranspilerError::new_err(error.to_string())
+            }
+            ConstrainedRescheduleError::MissingVal(_) => PyValueError::new_err(value.to_string()),
+            ConstrainedRescheduleError::DelayNoValue => PyValueError::new_err(value.to_string()),
+            ConstrainedRescheduleError::PyParamExtraction(py_err) => py_err,
+        }
+    }
+}
 
 /// Returns the immediate successor operation nodes of a given node in the DAG.
 ///
@@ -68,7 +96,7 @@ fn push_node_back(
     pulse_align: u32,
     acquire_align: u32,
     target: Option<&Target>,
-) -> PyResult<()> {
+) -> Result<(), ConstrainedRescheduleError> {
     let NodeType::Operation(op) = &dag[node_index] else {
         unreachable!("topological_op_nodes() should only return operations.")
     };
@@ -83,17 +111,14 @@ fn push_node_back(
             if !op_view.directive() {
                 None
             } else {
-                return Err(TranspilerError::new_err(format!(
-                    "Unknown operation type for '{}'.",
-                    op_view.name()
-                )));
+                return Err(anyhow!("Unknown operation type for '{}'.", op_view.name()).into());
             }
         }
     };
 
     let mut this_t0: u64 = *node_start_time
         .get(&node_index)
-        .ok_or_else(|| PyValueError::new_err("Missing value in node_start_time"))?;
+        .ok_or_else(|| ConstrainedRescheduleError::MissingVal(node_index))?;
 
     if let Some(alignment) = alignment {
         let misalignment = this_t0 % alignment as u64;
@@ -125,16 +150,15 @@ fn push_node_back(
         let params = op.params_view();
         let param = params
             .first()
-            .ok_or_else(|| PyValueError::new_err("Delay instruction missing duration parameter"))?;
+            .ok_or_else(|| ConstrainedRescheduleError::DelayNoValue)?;
         let duration = match param {
             Param::Obj(val) => {
                 // Try to extract as different numeric types
                 Python::attach(|py| val.bind(py).extract::<u64>())
+                    .map_err(ConstrainedRescheduleError::PyParamExtraction)
             }
             Param::Float(f) => Ok(*f as u64),
-            _ => Err(TranspilerError::new_err(
-                "The provided Delay duration is not in terms of dt.",
-            )),
+            _ => Err(anyhow!("The provided Delay duration is not in terms of dt.",).into()),
         }?;
 
         this_t0 + duration
@@ -273,14 +297,14 @@ pub fn run_constrained_reschedule(
     acquire_align: u32,
     pulse_align: u32,
     target: Option<&Target>,
-) -> PyResult<()> {
+) -> Result<(), NativeTranspilerError> {
     for node_index in dag.topological_op_nodes(false) {
         let start_time = node_start_time.get(&node_index);
         let val = *start_time.ok_or_else(|| {
-            TranspilerError::new_err(format!(
+            anyhow!(
                 "Missing start time for node {}. Run scheduler again.",
                 node_index.index()
-            ))
+            )
         })?;
 
         if val == 0 {

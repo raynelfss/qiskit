@@ -38,10 +38,18 @@ use std::f64::consts::PI;
 ///     true iff all two-qubit gates comply with the coupling constraints
 #[pyfunction]
 #[pyo3(name = "check_gate_direction_coupling")]
-pub fn check_direction_coupling_map(
+fn py_check_direction_coupling_map(
     dag: &DAGCircuit,
     coupling_edges: HashSet<[Qubit; 2]>,
 ) -> PyResult<bool> {
+    check_direction_coupling_map(dag, coupling_edges)
+        .map_err(|e| TranspilerError::new_err(e.to_string()))
+}
+
+pub fn check_direction_coupling_map(
+    dag: &DAGCircuit,
+    coupling_edges: HashSet<[Qubit; 2]>,
+) -> anyhow::Result<bool> {
     let coupling_map_check =
         |_: &PackedInstruction, op_args: &[Qubit]| -> bool { coupling_edges.contains(op_args) };
 
@@ -59,7 +67,21 @@ pub fn check_direction_coupling_map(
 ///     true iff all two-qubit gates comply with the target's coupling constraints
 #[pyfunction]
 #[pyo3(name = "check_gate_direction_target")]
-pub fn check_direction_target(dag: &DAGCircuit, target: &Target) -> PyResult<bool> {
+fn py_check_direction_target(dag: &DAGCircuit, target: &Target) -> PyResult<bool> {
+    check_direction_target(dag, target).map_err(|e| TranspilerError::new_err(e.to_string()))
+}
+
+/// Check if the two-qubit gates follow the right direction with respect to instructions supported in the given target.
+///
+/// # Arguments:
+///
+/// * `dag` - the [`DAGCircuit`] to analyze.
+/// * `target` the [`Target`] against which gate directionality compliance is checked.
+///
+/// # Returns:
+///
+/// `true` iff all two-qubit gates comply with the target's coupling constraints
+pub fn check_direction_target(dag: &DAGCircuit, target: &Target) -> anyhow::Result<bool> {
     let target_check = |inst: &PackedInstruction, op_args: &[Qubit]| -> bool {
         let qargs = [
             PhysicalQubit::new(op_args[0].0),
@@ -85,7 +107,7 @@ fn check_gate_direction<T>(
     dag: &DAGCircuit,
     gate_complies: &T,
     qubit_mapping: Option<&[Qubit]>,
-) -> PyResult<bool>
+) -> anyhow::Result<bool>
 where
     T: Fn(&PackedInstruction, &[Qubit]) -> bool,
 {
@@ -147,6 +169,13 @@ where
 ///     the transformed DAGCircuit
 #[pyfunction]
 #[pyo3(name = "fix_gate_direction_coupling")]
+pub fn py_fix_direction_coupling_map(
+    dag: &mut DAGCircuit,
+    coupling_edges: HashSet<[Qubit; 2]>,
+) -> PyResult<()> {
+    fix_direction_coupling_map(dag, coupling_edges)
+}
+
 pub fn fix_direction_coupling_map(
     dag: &mut DAGCircuit,
     coupling_edges: HashSet<[Qubit; 2]>,
@@ -172,6 +201,20 @@ pub fn fix_direction_coupling_map(
 ///     the transformed DAGCircuit
 #[pyfunction]
 #[pyo3(name = "fix_gate_direction_target")]
+pub fn py_fix_direction_target(dag: &mut DAGCircuit, target: &Target) -> PyResult<()> {
+    fix_direction_target(dag, target)
+}
+
+/// Try to swap two-qubit gate directions using pre-defined mapping to follow the right direction with respect to the given target.
+///
+/// # Arguments:
+///
+/// * `dag` - the [`DAGCircuit`] to analyze
+/// * `target` - the [`Target`] against which gate directionality is checked
+///
+/// ## Returns:
+///     
+/// The transformed [`DAGCircuit`]
 pub fn fix_direction_target(dag: &mut DAGCircuit, target: &Target) -> PyResult<()> {
     let target_check = |inst: &PackedInstruction, op_args: &[Qubit]| -> bool {
         let qargs: &[PhysicalQubit] = &[
@@ -490,9 +533,9 @@ fn rzx_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
 }
 
 pub fn gate_direction_mod(m: &Bound<PyModule>) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(check_direction_coupling_map))?;
-    m.add_wrapped(wrap_pyfunction!(check_direction_target))?;
-    m.add_wrapped(wrap_pyfunction!(fix_direction_coupling_map))?;
-    m.add_wrapped(wrap_pyfunction!(fix_direction_target))?;
+    m.add_wrapped(wrap_pyfunction!(py_check_direction_coupling_map))?;
+    m.add_wrapped(wrap_pyfunction!(py_check_direction_target))?;
+    m.add_wrapped(wrap_pyfunction!(py_fix_direction_coupling_map))?;
+    m.add_wrapped(wrap_pyfunction!(py_fix_direction_target))?;
     Ok(())
 }

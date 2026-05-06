@@ -320,7 +320,7 @@ pub fn translation_stage(
     }
     if !check_direction_target(dag, target)? {
         fix_direction_target(dag, target)?;
-        if gates_missing_from_target(dag, target)? {
+        if gates_missing_from_target(dag, target) {
             if let Some(out_dag) =
                 run_basis_translator(dag, equiv_lib, 0, Some(target), None).unwrap()
             {
@@ -358,7 +358,7 @@ pub fn optimization_stage(
             size = new_size;
             run_optimize_1q_gates_decomposition(dag, Some(target), None, None)?;
             run_inverse_cancellation_standard_gates(dag);
-            if gates_missing_from_target(dag, target)? {
+            if gates_missing_from_target(dag, target) {
                 translation_stage(dag, target, synthesis_state, equivalence_library)?;
             }
             new_depth = Some(dag.depth(false)?);
@@ -382,7 +382,7 @@ pub fn optimization_stage(
             run_remove_identity_equiv(dag, approximation_degree, Some(target))?;
             run_optimize_1q_gates_decomposition(dag, Some(target), None, None)?;
             cancel_commutations(dag, commutation_checker, None, 1.0)?;
-            if gates_missing_from_target(dag, target)? {
+            if gates_missing_from_target(dag, target) {
                 translation_stage(dag, target, synthesis_state, equivalence_library)?;
             }
             new_depth = Some(dag.depth(false)?);
@@ -405,7 +405,7 @@ pub fn optimization_stage(
             run_remove_identity_equiv(dag, approximation_degree, Some(target))?;
             run_optimize_1q_gates_decomposition(dag, Some(target), None, None)?;
             cancel_commutations(dag, commutation_checker, None, 1.0)?;
-            if gates_missing_from_target(dag, target)? {
+            if gates_missing_from_target(dag, target) {
                 translation_stage(dag, target, synthesis_state, equivalence_library)?;
             }
             continue_loop = min_state.update_with(dag);

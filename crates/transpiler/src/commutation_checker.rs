@@ -15,6 +15,7 @@ use ndarray::Array2;
 use ndarray::linalg::kron;
 use num_complex::Complex64;
 use num_complex::ComplexFloat;
+use qiskit_circuit::dag_circuit::DAGCircuitInnerError;
 use qiskit_circuit::object_registry::PyObjectAsKey;
 use qiskit_circuit::standard_gate::standard_generators::standard_gate_exponent;
 use qiskit_quantum_info::sparse_observable::{PySparseObservable, SparseObservable};
@@ -45,7 +46,7 @@ use crate::gate_metrics;
 use crate::standard_gates_commutations;
 
 #[derive(Error, Debug)]
-pub enum CommutationError {
+pub enum CommutationAnalysisError {
     #[error("Einsum error: {0}")]
     EinsumError(&'static str),
     #[error("First instruction must have at most as many qubits as the second instruction")]
@@ -54,13 +55,17 @@ pub enum CommutationError {
     HashingNaN,
     #[error("Invalid hash type: parameterized")]
     HashingParameter,
+    // TODO: Replace with DAGCircuit Error
+    #[error(transparent)]
+    DAGCircuit(#[from] DAGCircuitInnerError),
 }
 
-impl From<CommutationError> for PyErr {
-    fn from(value: CommutationError) -> Self {
+impl From<CommutationAnalysisError> for PyErr {
+    fn from(value: CommutationAnalysisError) -> Self {
         match value {
             // For backward compatibility we keep these two errors as QiskitErrors
-            CommutationError::HashingParameter | CommutationError::FirstInstructionTooLarge => {
+            CommutationAnalysisError::HashingParameter
+            | CommutationAnalysisError::FirstInstructionTooLarge => {
                 QiskitError::new_err(value.to_string())
             }
             _ => PyRuntimeError::new_err(value.to_string()),
@@ -445,7 +450,7 @@ impl CommutationChecker {
         max_num_qubits: Option<u32>,
         matrix_max_num_qubits: u32,
         approximation_degree: f64,
-    ) -> Result<bool, CommutationError> {
+    ) -> Result<bool, CommutationAnalysisError> {
         // If the average gate infidelity is below this tolerance, they commute. The tolerance
         // is set to max(1e-12, 1 - approximation_degree), to account for roundoffs and for
         // consistency with other places in Qiskit.
@@ -632,7 +637,7 @@ impl CommutationChecker {
         second_params: &[Param],
         second_qargs: &[Qubit],
         tol: f64,
-    ) -> Result<bool, CommutationError> {
+    ) -> Result<bool, CommutationAnalysisError> {
         // Compute relative positioning of qargs of the second gate to the first gate.
         // Since the qargs come out the same BitData, we already know there are no accidental
         // bit-duplications, but this code additionally maps first_qargs to [0..n] and then
@@ -661,7 +666,7 @@ impl CommutationChecker {
             .collect::<Vec<_>>();
 
         if first_indices.len() > second_indices.len() {
-            return Err(CommutationError::FirstInstructionTooLarge);
+            return Err(CommutationAnalysisError::FirstInstructionTooLarge);
         };
         let first_mat = match try_matrix_with_definition(first_op, first_params, None) {
             Some(matrix) => matrix,
@@ -697,7 +702,7 @@ impl CommutationChecker {
             false,
         ) {
             Ok(matrix) => matrix,
-            Err(e) => return Err(CommutationError::EinsumError(e)),
+            Err(e) => return Err(CommutationAnalysisError::EinsumError(e)),
         };
         let op21 = match unitary_compose::compose(
             &first_mat.view(),
@@ -706,7 +711,7 @@ impl CommutationChecker {
             true,
         ) {
             Ok(matrix) => matrix,
-            Err(e) => return Err(CommutationError::EinsumError(e)),
+            Err(e) => return Err(CommutationAnalysisError::EinsumError(e)),
         };
         let (fid, phase) = gate_metrics::gate_fidelity(&op12.view(), &op21.view());
 

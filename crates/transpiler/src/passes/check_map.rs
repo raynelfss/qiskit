@@ -23,7 +23,7 @@ fn recurse(
     dag: &DAGCircuit,
     target: &Target,
     wire_map: Option<&[Qubit]>,
-) -> PyResult<Option<(String, [u32; 2])>> {
+) -> Option<(String, [u32; 2])> {
     let check_qubits = |qubits: &[Qubit]| -> bool {
         match wire_map {
             Some(wire_map) => {
@@ -56,29 +56,26 @@ fn recurse(
                     })
                     .collect::<Vec<_>>();
 
-                let res = recurse(block, target, Some(&wire_map))?;
+                let res = recurse(block, target, Some(&wire_map));
                 if res.is_some() {
-                    return Ok(res);
+                    return res;
                 }
             }
         } else if qubits.len() == 2 && !check_qubits(qubits) {
-            return Ok(Some((
-                inst.op.name().to_string(),
-                [qubits[0].0, qubits[1].0],
-            )));
+            return Some((inst.op.name().to_string(), [qubits[0].0, qubits[1].0]));
         }
     }
-    Ok(None)
+    None
 }
 
 #[pyfunction]
 #[pyo3(name = "check_map")]
-pub fn py_run_check_map(dag: &DAGCircuit, target: &Target) -> PyResult<Option<(String, [u32; 2])>> {
+pub fn py_run_check_map(dag: &DAGCircuit, target: &Target) -> Option<(String, [u32; 2])> {
     if dag.has_control_flow() {
         recurse(dag, target, None)
     } else {
-        Ok(run_check_map(dag, target)
-            .map(|(name, qubits)| (name.to_string(), [qubits[0].0, qubits[1].0])))
+        run_check_map(dag, target)
+            .map(|(name, qubits)| (name.to_string(), [qubits[0].0, qubits[1].0]))
     }
 }
 
