@@ -15,7 +15,7 @@ use qiskit_circuit::{circuit_data::CircuitDataError, dag_circuit::DAGCircuitInne
 use thiserror::Error;
 
 use crate::passes::errors::{
-    BasisTranslatorError, CommutationAnalysisError, CommutationCancelError,
+    BasisTranslatorError, CommutationAnalysisError, CommutationCancelError, ConsolidateBlocksError,
     ConstrainedRescheduleError, DisjointLayoutError, InstructionDurationCheckError,
     TranspilerError,
 };
@@ -41,9 +41,12 @@ pub enum NativeTranspilerError {
     // CommutativeCancelation errors,
     #[error(transparent)]
     CommutationCancel(#[from] CommutationCancelError),
-    // CommutativeCancelation errors,
+    // ConstrainedReschedule errors,
     #[error(transparent)]
     ConstrainedReschedule(#[from] ConstrainedRescheduleError),
+    // ConsolidateBlocks errors,
+    #[error(transparent)]
+    ConsolidateBlocks(#[from] ConsolidateBlocksError),
     // InstructionDurationCheck errors,
     #[error(transparent)]
     InstructionDurationCheck(#[from] InstructionDurationCheckError),
@@ -74,6 +77,9 @@ impl From<NativeTranspilerError> for PyErr {
             }
             NativeTranspilerError::ConstrainedReschedule(constrained_reschedule_error) => {
                 constrained_reschedule_error.into()
+            }
+            NativeTranspilerError::ConsolidateBlocks(consolidate_blocks_error) => {
+                consolidate_blocks_error.into()
             }
             NativeTranspilerError::DAGCircuit(dagcircuit_inner_error) => {
                 dagcircuit_inner_error.into()

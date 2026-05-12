@@ -15,6 +15,7 @@ pub use crate::{
     commutation_checker::CommutationAnalysisError,
     passes::{
         basis_translator::BasisTranslatorError, commutation_cancellation::CommutationCancelError,
+        consolidate_blocks::ConsolidateBlocksError,
         constrained_reschedule::ConstrainedRescheduleError, disjoint_layout::DisjointLayoutError,
         instruction_duration_check::InstructionDurationCheckError,
     },
