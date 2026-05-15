@@ -45,7 +45,9 @@ use std::sync::OnceLock;
 /// Errors that can be thrown by UnitarySynthesis
 #[derive(Debug, thiserror::Error)]
 pub enum UnitarySynthesisError {
-    #[error("No preferred direction of gate on qubits {0:?} could be determined from coupling map or gate lengths / gate errors.")]
+    #[error(
+        "No preferred direction of gate on qubits {0:?} could be determined from coupling map or gate lengths / gate errors."
+    )]
     NoPreferredDirection([PhysicalQubit; 2]),
     #[error("requested synthesis fidelity is out of range: {0}")]
     SynthesisFidelityOutOfRange(f64),
@@ -66,8 +68,12 @@ pub enum UnitarySynthesisError {
 impl From<UnitarySynthesisError> for PyErr {
     fn from(value: UnitarySynthesisError) -> Self {
         match value {
-            UnitarySynthesisError::NoPreferredDirection(_) => QiskitError::new_err(value.to_string()),
-            UnitarySynthesisError::SynthesisFidelityOutOfRange(_) => PyValueError::new_err(value.to_string()),
+            UnitarySynthesisError::NoPreferredDirection(_) => {
+                QiskitError::new_err(value.to_string())
+            }
+            UnitarySynthesisError::SynthesisFidelityOutOfRange(_) => {
+                PyValueError::new_err(value.to_string())
+            }
             UnitarySynthesisError::DAGCircuit(error) => error.into(),
             UnitarySynthesisError::XXDecomposer(py_err) => py_err,
             UnitarySynthesisError::QSD(qsderror) => qsderror.into(),
@@ -548,11 +554,14 @@ fn synthesize_2q_matrix_onto(
         .map(|(decomposer, flip)| -> Result<_, UnitarySynthesisError> {
             match flip {
                 FlipDirection::No => single_decomposition(decomposer, Direction2q::Forwards)
-                    .map(|seq| (Direction2q::Forwards, seq)).map_err(UnitarySynthesisError::Decomposer2q),
+                    .map(|seq| (Direction2q::Forwards, seq))
+                    .map_err(UnitarySynthesisError::Decomposer2q),
                 FlipDirection::Yes => single_decomposition(decomposer, Direction2q::Backwards)
-                    .map(|seq| (Direction2q::Backwards, seq)).map_err(UnitarySynthesisError::Decomposer2q),
+                    .map(|seq| (Direction2q::Backwards, seq))
+                    .map_err(UnitarySynthesisError::Decomposer2q),
                 FlipDirection::Ensure(dir) => {
-                    let normal = single_decomposition(decomposer, Direction2q::Forwards).map_err(UnitarySynthesisError::Decomposer2q)?;
+                    let normal = single_decomposition(decomposer, Direction2q::Forwards)
+                        .map_err(UnitarySynthesisError::Decomposer2q)?;
                     if normal
                         .gates()
                         .iter()
@@ -566,7 +575,8 @@ fn synthesize_2q_matrix_onto(
                         // historical assumption, and we'd be better just fixing the decomposers so
                         // they're not flaky with respect to direction.
                         single_decomposition(decomposer, Direction2q::Backwards)
-                            .map(|seq| (Direction2q::Backwards, seq)).map_err(UnitarySynthesisError::Decomposer2q)
+                            .map(|seq| (Direction2q::Backwards, seq))
+                            .map_err(UnitarySynthesisError::Decomposer2q)
                     }
                 }
             }
@@ -652,7 +662,8 @@ fn synthesize_2q_matrix_onto(
                 Ok(PackedOperation::from(Box::new(PyOperationTypes::Gate(
                     gate,
                 ))))
-            }).map_err(UnitarySynthesisError::PyGate)?,
+            })
+            .map_err(UnitarySynthesisError::PyGate)?,
             _ => panic!("internal logic error: decomposed sequence contains a non-gate"),
         };
         let params = (!params.is_empty()).then(|| {
@@ -729,7 +740,8 @@ pub fn py_unitary_synthesis(
         &qubit_indices,
         &mut state,
         constraint,
-    ).map_err(Into::into)
+    )
+    .map_err(Into::into)
 }
 
 #[allow(clippy::too_many_arguments)]

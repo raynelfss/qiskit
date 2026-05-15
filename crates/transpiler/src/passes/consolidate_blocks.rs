@@ -639,7 +639,7 @@ pub fn run_consolidate_blocks(
     force_consolidate: bool,
     approximation_degree: Option<f64>,
     target: Option<&Target>,
-) -> PyResult<()> {
+) -> Result<(), ConsolidateBlocksError> {
     let approximation_degree = approximation_degree.unwrap_or(1.0);
     if force_consolidate {
         inner_run_consolidate_blocks(

@@ -249,7 +249,8 @@ pub fn _num_basis_gates(
     unitary: PyReadonlyArray2<Complex<f64>>,
 ) -> PyResult<usize> {
     let u = ndarray_to_faer(unitary.as_array());
-    __num_basis_gates(basis_b, basis_fidelity, u).map_err(|e| QiskitError::new_err(format!("{e:?}")))
+    __num_basis_gates(basis_b, basis_fidelity, u)
+        .map_err(|e| QiskitError::new_err(format!("{e:?}")))
 }
 
 pub(super) fn __num_basis_gates(

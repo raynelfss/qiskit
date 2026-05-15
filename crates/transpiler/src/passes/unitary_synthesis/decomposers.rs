@@ -38,7 +38,6 @@ use super::{
     Approximation, DecompositionDirection2q, NormalizedFidelity, QpuConstraint, QpuConstraintKind,
     UnitarySynthesisConfig, UsePulseOptimizer,
 };
-use crate::QiskitError;
 use crate::passes::optimize_clifford_t::CLIFFORD_T_GATE_NAMES;
 use crate::passes::unitary_synthesis::UnitarySynthesisError;
 use crate::target::{NormalOperation, Target, TargetOperation};
@@ -469,7 +468,8 @@ impl DecomposerCache {
         qubits: [PhysicalQubit; 2],
         config: &UnitarySynthesisConfig,
         constraint: QpuConstraint,
-    ) -> Result<impl ExactSizeIterator<Item = (&Decomposer2q, FlipDirection)>, UnitarySynthesisError> {
+    ) -> Result<impl ExactSizeIterator<Item = (&Decomposer2q, FlipDirection)>, UnitarySynthesisError>
+    {
         // We can't use `Entry::or_insert_with` because our creator function is fallible and we
         // might have to propagate its error.
         let entry = match self.decomposers_2q.entry(qubits) {
@@ -549,9 +549,7 @@ fn get_2q_decomposers(
                 DecompositionDirection2q::UniquelyBestValid
                     if direction == AllowedDirection2q::Both =>
                 {
-                    return Err(UnitarySynthesisError::NoPreferredDirection(
-                        qubits
-                    ));
+                    return Err(UnitarySynthesisError::NoPreferredDirection(qubits));
                 }
                 DecompositionDirection2q::UniquelyBestValid
                 | DecompositionDirection2q::BestValid => direction,
@@ -591,9 +589,10 @@ fn get_2q_decomposers(
                     gate: kak_gate.into(),
                     params: smallvec![],
                 };
-                let fidelity = config.approximation.synthesis_fidelity(0.0).map_err(|e| {
-                    UnitarySynthesisError::SynthesisFidelityOutOfRange(e)
-                })?;
+                let fidelity = config
+                    .approximation
+                    .synthesis_fidelity(0.0)
+                    .map_err(UnitarySynthesisError::SynthesisFidelityOutOfRange)?;
                 let constructor = Decomposer2qConstructor::StaticKak(StaticKakConstructor {
                     source,
                     euler,
@@ -677,9 +676,7 @@ fn get_2q_decomposers(
                 let fidelity = config
                     .approximation
                     .synthesis_fidelity(candidate.error)
-                    .map_err(|e| {
-                        UnitarySynthesisError::SynthesisFidelityOutOfRange(e)
-                    })?;
+                    .map_err(UnitarySynthesisError::SynthesisFidelityOutOfRange)?;
                 // TODO: the 2q decomposers internally already do everything that's needed to handle
                 // _all_ of the 1q bases simultaneously without further decompositions, but don't
                 // expose that functionality.  This wastes huge amounts of time and needs a fix.
