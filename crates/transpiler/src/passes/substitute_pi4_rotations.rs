@@ -16,6 +16,7 @@ use pyo3::wrap_pyfunction;
 use qiskit_circuit::BlocksMode;
 use qiskit_circuit::Qubit;
 use qiskit_circuit::VarsMode;
+use qiskit_circuit::dag_circuit::DAGCircuitInnerError;
 use qiskit_circuit::operations::Operation;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, FRAC_PI_8, PI};
 
@@ -1080,7 +1081,7 @@ fn rotation_to_pi_div(gate: StandardGate) -> usize {
 pub fn py_run_substitute_pi4_rotations(
     dag: &DAGCircuit,
     approximation_degree: f64,
-) -> PyResult<Option<DAGCircuit>> {
+) -> Result<Option<DAGCircuit>, DAGCircuitInnerError> {
     // Skip the pass if there are no rotation gates.
     if dag
         .get_op_counts()

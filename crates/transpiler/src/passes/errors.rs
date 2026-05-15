@@ -18,5 +18,7 @@ pub use crate::{
         consolidate_blocks::ConsolidateBlocksError,
         constrained_reschedule::ConstrainedRescheduleError, disjoint_layout::DisjointLayoutError,
         instruction_duration_check::InstructionDurationCheckError,
+        remove_identity_equiv::RemoveIdentityEquivError, split_2q_unitaries::Split2QUnitariesError,
+        unitary_synthesis::UnitarySynthesisError,
     },
 };

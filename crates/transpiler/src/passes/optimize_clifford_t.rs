@@ -12,6 +12,7 @@
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use qiskit_circuit::dag_circuit::DAGCircuitInnerError;
 use std::f64::consts::PI;
 
 use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
@@ -339,7 +340,7 @@ fn optimize_clifford_t_1q(
 pub fn run_optimize_clifford_t(
     dag: &mut DAGCircuit,
     basis_gates: Option<Vec<StandardGate>>,
-) -> PyResult<()> {
+) -> Result<(), DAGCircuitInnerError> {
     let filter = |inst: &PackedInstruction| -> bool {
         matches!(
             inst.op.view(),

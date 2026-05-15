@@ -10,6 +10,8 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use std::num::NonZero;
+
 use pyo3::IntoPyObjectExt;
 use pyo3::Python;
 use pyo3::exceptions::PyValueError;
@@ -259,7 +261,8 @@ impl Heuristic {
 
     /// Set the multiplier increment and reset interval of the decay heuristic.  The reset interval
     /// must be non-zero.
-    pub fn with_decay(&self, increment: f64, reset: usize) -> PyResult<Self> {
+    #[pyo3(name = "with_decay")]
+    fn py_with_decay(&self, increment: f64, reset: usize) -> PyResult<Self> {
         if reset == 0 {
             Err(PyValueError::new_err("decay reset interval cannot be zero"))
         } else {
@@ -284,5 +287,19 @@ impl Heuristic {
                 ),
             )?
             .into_py_any(py)
+    }
+}
+
+impl Heuristic {
+    /// Set the multiplier increment and reset interval of the decay heuristic.  The reset interval
+    /// must be non-zero.
+    pub fn with_decay(&self, increment: f64, reset: NonZero<usize>) -> Self {
+        Self {
+            decay: Some(DecayHeuristic {
+                increment,
+                reset: reset.into(),
+            }),
+            ..self.clone()
+        }
     }
 }

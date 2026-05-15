@@ -654,7 +654,6 @@ pub fn run_consolidate_blocks(
             // TODO: this doesn't handle the possibility of control-flow operations yet.
             None,
         )
-        .map_err(Into::into)
     } else {
         let (decomposer, basis_gate) = get_decomposer_and_basis_gate(target, approximation_degree);
         inner_run_consolidate_blocks(
@@ -669,7 +668,6 @@ pub fn run_consolidate_blocks(
             // TODO: this doesn't handle the possibility of control-flow operations yet.
             None,
         )
-        .map_err(Into::into)
     }
 }
 

@@ -14,10 +14,14 @@ use pyo3::PyErr;
 use qiskit_circuit::{circuit_data::CircuitDataError, dag_circuit::DAGCircuitInnerError};
 use thiserror::Error;
 
-use crate::passes::errors::{
-    BasisTranslatorError, CommutationAnalysisError, CommutationCancelError, ConsolidateBlocksError,
-    ConstrainedRescheduleError, DisjointLayoutError, InstructionDurationCheckError,
-    TranspilerError,
+use crate::{
+    passes::errors::{
+        BasisTranslatorError, CommutationAnalysisError, CommutationCancelError,
+        ConsolidateBlocksError, ConstrainedRescheduleError, DisjointLayoutError,
+        InstructionDurationCheckError, RemoveIdentityEquivError, Split2QUnitariesError,
+        TranspilerError, UnitarySynthesisError,
+    },
+    target::TargetError,
 };
 
 /// Collection of errors that can happen within a transpiler pass.
@@ -50,6 +54,18 @@ pub enum NativeTranspilerError {
     // InstructionDurationCheck errors,
     #[error(transparent)]
     InstructionDurationCheck(#[from] InstructionDurationCheckError),
+    /// RemoveIdentityEquiv error
+    #[error(transparent)]
+    RemoveIdentityEquiv(#[from] RemoveIdentityEquivError),
+    /// Split2QUnitaries error
+    #[error(transparent)]
+    Split2QUnitaries(#[from] Split2QUnitariesError),
+    // UnitarySynthesis error
+    #[error(transparent)]
+    UnitarySynthesis(#[from] UnitarySynthesisError),
+    // Target error
+    #[error(transparent)]
+    Target(#[from] TargetError),
     // Generic transpiler error with a message
     #[error(transparent)]
     Generic(#[from] anyhow::Error),
@@ -88,6 +104,16 @@ impl From<NativeTranspilerError> for PyErr {
             NativeTranspilerError::InstructionDurationCheck(instruction_duration_check_error) => {
                 instruction_duration_check_error.into()
             }
+            NativeTranspilerError::RemoveIdentityEquiv(remove_identity_equiv_error) => {
+                remove_identity_equiv_error.into()
+            }
+            NativeTranspilerError::Split2QUnitaries(split2_qunitaries_error) => {
+                split2_qunitaries_error.into()
+            }
+            NativeTranspilerError::UnitarySynthesis(unitary_synthesis_error) => {
+                unitary_synthesis_error.into()
+            }
+            NativeTranspilerError::Target(target_error) => target_error.into(),
         }
     }
 }

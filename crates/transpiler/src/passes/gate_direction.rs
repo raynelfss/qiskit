@@ -11,11 +11,13 @@
 // that they have been altered from the originals.
 
 use crate::TranspilerError;
+use crate::errors::NativeTranspilerError;
 use crate::target::Target;
 use hashbrown::HashSet;
 use pyo3::prelude::*;
 use qiskit_circuit::PhysicalQubit;
 use qiskit_circuit::bit::{QuantumRegister, Register};
+use qiskit_circuit::dag_circuit::DAGCircuitInnerError;
 use qiskit_circuit::instruction::Parameters;
 use qiskit_circuit::operations::{OperationRef, StandardGate};
 use qiskit_circuit::packed_instruction::{PackedInstruction, PackedOperation};
@@ -187,7 +189,7 @@ pub fn fix_direction_coupling_map(
     let coupling_map_check =
         |_: &PackedInstruction, op_args: &[Qubit]| -> bool { coupling_edges.contains(op_args) };
 
-    fix_gate_direction(dag, &coupling_map_check, None)
+    fix_gate_direction(dag, &coupling_map_check, None).map_err(Into::into)
 }
 
 /// Try to swap two-qubit gate directions using pre-defined mapping to follow the right direction with respect to the given target.
@@ -202,7 +204,7 @@ pub fn fix_direction_coupling_map(
 #[pyfunction]
 #[pyo3(name = "fix_gate_direction_target")]
 pub fn py_fix_direction_target(dag: &mut DAGCircuit, target: &Target) -> PyResult<()> {
-    fix_direction_target(dag, target)
+    fix_direction_target(dag, target).map_err(Into::into)
 }
 
 /// Try to swap two-qubit gate directions using pre-defined mapping to follow the right direction with respect to the given target.
@@ -215,7 +217,10 @@ pub fn py_fix_direction_target(dag: &mut DAGCircuit, target: &Target) -> PyResul
 /// ## Returns:
 ///     
 /// The transformed [`DAGCircuit`]
-pub fn fix_direction_target(dag: &mut DAGCircuit, target: &Target) -> PyResult<()> {
+pub fn fix_direction_target(
+    dag: &mut DAGCircuit,
+    target: &Target,
+) -> Result<(), NativeTranspilerError> {
     let target_check = |inst: &PackedInstruction, op_args: &[Qubit]| -> bool {
         let qargs: &[PhysicalQubit] = &[
             PhysicalQubit::new(op_args[0].0),
@@ -233,7 +238,7 @@ fn fix_gate_direction<T>(
     dag: &mut DAGCircuit,
     gate_complies: &T,
     qubit_mapping: Option<&[Qubit]>,
-) -> PyResult<()>
+) -> Result<(), NativeTranspilerError>
 where
     T: Fn(&PackedInstruction, &[Qubit]) -> bool,
 {
@@ -299,11 +304,12 @@ where
                         nodes_to_replace.push((node, replace_dag(std_gate, packed_inst)?));
                         continue;
                     } else {
-                        return Err(TranspilerError::new_err(format!(
+                        return Err(anyhow::anyhow!(
                             "The circuit requires a connection between physical qubits {:?} for {}",
                             op_args,
                             packed_inst.op.name()
-                        )));
+                        )
+                        .into());
                     }
                 }
                 _ => {}
@@ -311,20 +317,21 @@ where
         }
         // No matching replacement found
         if gate_complies(packed_inst, &[op_args1, op_args0]) {
-            return Err(TranspilerError::new_err(format!(
+            return Err(anyhow::anyhow!(
                 "{} would be supported on {:?} if the direction was swapped, but no rules are known to do that. {:?} can be automatically flipped.",
                 packed_inst.op.name(),
                 op_args,
                 vec!["cx", "cz", "ecr", "swap", "rzx", "rxx", "ryy", "rzz"]
-            )));
+            ).into());
             // NOTE: Make sure to update the list of the supported gates if adding more replacements
         } else {
-            return Err(TranspilerError::new_err(format!(
+            return Err(anyhow::anyhow!(
                 "{} with parameters {:?} is not supported on qubits {:?} in either direction.",
                 packed_inst.op.name(),
                 packed_inst.params.as_deref(),
                 op_args
-            )));
+            )
+            .into());
         }
     }
 
@@ -355,7 +362,10 @@ where
 // Return a replacement DAG for the given standard gate in the supported list
 // TODO: optimize it by caching the DAGs of the non-parametric gates and caching and
 // mutating upon request the DAGs of the parametric gates
-fn replace_dag(std_gate: StandardGate, inst: &PackedInstruction) -> PyResult<DAGCircuit> {
+fn replace_dag(
+    std_gate: StandardGate,
+    inst: &PackedInstruction,
+) -> Result<DAGCircuit, DAGCircuitInnerError> {
     match std_gate {
         StandardGate::CX => cx_replacement_dag(),
         StandardGate::ECR => ecr_replacement_dag(),
@@ -374,7 +384,7 @@ fn replace_dag(std_gate: StandardGate, inst: &PackedInstruction) -> PyResult<DAG
 //
 // TODO: replace this once we have a Rust version of QuantumRegister
 #[inline]
-fn add_qreg(dag: &mut DAGCircuit, num_qubits: u32) -> PyResult<Vec<Qubit>> {
+fn add_qreg(dag: &mut DAGCircuit, num_qubits: u32) -> Result<Vec<Qubit>, DAGCircuitInnerError> {
     let qreg = QuantumRegister::new_owning("q".to_string(), num_qubits);
     dag.add_qreg(qreg.clone())?;
     let mut qargs = Vec::new();
@@ -396,7 +406,7 @@ fn apply_operation_back(
     gate: StandardGate,
     qargs: &[Qubit],
     param: Option<SmallVec<[Param; 3]>>,
-) -> PyResult<()> {
+) -> Result<(), DAGCircuitInnerError> {
     dag.apply_operation_back(
         PackedOperation::from_standard_gate(gate),
         qargs,
@@ -410,7 +420,7 @@ fn apply_operation_back(
     Ok(())
 }
 
-fn cx_replacement_dag() -> PyResult<DAGCircuit> {
+fn cx_replacement_dag() -> Result<DAGCircuit, DAGCircuitInnerError> {
     let mut new_dag = DAGCircuit::new();
     let qargs = add_qreg(&mut new_dag, 2)?;
     let qargs = qargs.as_slice();
@@ -424,7 +434,7 @@ fn cx_replacement_dag() -> PyResult<DAGCircuit> {
     Ok(new_dag)
 }
 
-fn ecr_replacement_dag() -> PyResult<DAGCircuit> {
+fn ecr_replacement_dag() -> Result<DAGCircuit, DAGCircuitInnerError> {
     let mut new_dag = DAGCircuit::new();
     new_dag.add_global_phase(&Param::Float(-PI / 2.0))?;
     let qargs = add_qreg(&mut new_dag, 2)?;
@@ -443,7 +453,7 @@ fn ecr_replacement_dag() -> PyResult<DAGCircuit> {
     Ok(new_dag)
 }
 
-fn cz_replacement_dag() -> PyResult<DAGCircuit> {
+fn cz_replacement_dag() -> Result<DAGCircuit, DAGCircuitInnerError> {
     let mut new_dag = DAGCircuit::new();
     let qargs = add_qreg(&mut new_dag, 2)?;
     let qargs = qargs.as_slice();
@@ -453,7 +463,7 @@ fn cz_replacement_dag() -> PyResult<DAGCircuit> {
     Ok(new_dag)
 }
 
-fn swap_replacement_dag() -> PyResult<DAGCircuit> {
+fn swap_replacement_dag() -> Result<DAGCircuit, DAGCircuitInnerError> {
     let mut new_dag = DAGCircuit::new();
     let qargs = add_qreg(&mut new_dag, 2)?;
     let qargs = qargs.as_slice();
@@ -468,7 +478,7 @@ fn swap_replacement_dag() -> PyResult<DAGCircuit> {
     Ok(new_dag)
 }
 
-fn rxx_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
+fn rxx_replacement_dag(param: &[Param]) -> Result<DAGCircuit, DAGCircuitInnerError> {
     let mut new_dag = DAGCircuit::new();
     let qargs = add_qreg(&mut new_dag, 2)?;
     let qargs = qargs.as_slice();
@@ -483,7 +493,7 @@ fn rxx_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
     Ok(new_dag)
 }
 
-fn ryy_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
+fn ryy_replacement_dag(param: &[Param]) -> Result<DAGCircuit, DAGCircuitInnerError> {
     let mut new_dag = DAGCircuit::new();
     let qargs = add_qreg(&mut new_dag, 2)?;
     let qargs = qargs.as_slice();
@@ -498,7 +508,7 @@ fn ryy_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
     Ok(new_dag)
 }
 
-fn rzz_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
+fn rzz_replacement_dag(param: &[Param]) -> Result<DAGCircuit, DAGCircuitInnerError> {
     let mut new_dag = DAGCircuit::new();
     let qargs = add_qreg(&mut new_dag, 2)?;
     let qargs = qargs.as_slice();
@@ -513,7 +523,7 @@ fn rzz_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
     Ok(new_dag)
 }
 
-fn rzx_replacement_dag(param: &[Param]) -> PyResult<DAGCircuit> {
+fn rzx_replacement_dag(param: &[Param]) -> Result<DAGCircuit, DAGCircuitInnerError> {
     let mut new_dag = DAGCircuit::new();
     let qargs = add_qreg(&mut new_dag, 2)?;
     let qargs = qargs.as_slice();

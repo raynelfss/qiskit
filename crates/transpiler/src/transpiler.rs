@@ -10,6 +10,8 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use std::num::NonZero;
+
 use anyhow::Result;
 
 use crate::commutation_checker::CommutationChecker;
@@ -454,7 +456,7 @@ pub fn get_sabre_heuristic(target: &Target) -> Result<sabre::Heuristic> {
         vec![0.5 / target.num_qubits.unwrap_or(20) as f64],
         sabre::SetScaling::Constant,
     )
-    .with_decay(0.001, 5)?)
+    .with_decay(0.001, NonZero::new(5_usize).expect("5 is not zero.")))
 }
 
 /// A transpilation function for Rust native circuits for use in the C API. This will not cover

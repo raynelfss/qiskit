@@ -10,6 +10,8 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use std::str::FromStr;
+
 use hashbrown::HashSet;
 use num_complex::Complex64;
 
@@ -22,6 +24,7 @@ use rustworkx_core::petgraph::stable_graph::NodeIndex;
 use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
 use qiskit_circuit::operations::{Operation, OperationRef, Param};
 
+use crate::errors::NativeTranspilerError;
 use crate::target::{Target, TargetOperation};
 use qiskit_circuit::instruction::Instruction;
 use qiskit_circuit::{PhysicalQubit, gate_matrix};
@@ -62,6 +65,7 @@ pub fn py_run_optimize_1q_gates_decomposition(
     global_decomposers: Option<Vec<String>>,
 ) -> PyResult<()> {
     run_optimize_1q_gates_decomposition(dag, target, basis_gates, global_decomposers)
+        .map_err(Into::into)
 }
 
 pub fn run_optimize_1q_gates_decomposition(
@@ -69,7 +73,7 @@ pub fn run_optimize_1q_gates_decomposition(
     target: Option<&Target>,
     basis_gates: Option<HashSet<String>>,
     global_decomposers: Option<Vec<String>>,
-) -> PyResult<()> {
+) -> Result<(), NativeTranspilerError> {
     let runs: Vec<Vec<NodeIndex>> = dag.collect_1q_runs().unwrap().collect();
     let dag_qubits = dag.num_qubits();
     let mut target_basis_per_qubit: Vec<EulerBasisSet> = vec![EulerBasisSet::new(); dag_qubits];
@@ -140,7 +144,11 @@ pub fn run_optimize_1q_gates_decomposition(
                 None => match &global_decomposers {
                     Some(bases) => {
                         for basis in bases.iter() {
-                            target_basis_set.add_basis(EulerBasis::__new__(basis)?)
+                            target_basis_set.add_basis(
+                                EulerBasis::from_str(basis).map_err(|_| {
+                                    anyhow::anyhow!("Invalid target basis '{basis}'")
+                                })?,
+                            )
                         }
                     }
                     None => match basis_gates {
