@@ -10,15 +10,21 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+use std::f64::consts::PI;
+
 use pyo3::{
     Python, intern,
     types::{PyNone, PyString},
 };
 use qiskit_circuit::{
     Clbit, NoBlocks, Qubit,
+    bit::QuantumRegister,
+    circuit_data::{CircuitData, CircuitDataError},
     circuit_instruction::OperationFromPython,
-    operations::{Param, StandardGate, multiply_param},
+    dag_circuit::{DAGCircuit, DAGError},
+    operations::{Operation, Param, StandardGate, multiply_param},
     packed_instruction::PackedOperation,
+    parameter::parameter_expression::ParameterExpression,
 };
 use smallvec::{SmallVec, smallvec};
 
@@ -408,4 +414,403 @@ fn add_control(gate: StandardGate, params: &[Param], control_state: &[bool]) -> 
 
         controlled_gate.operation
     })
+}
+
+const EFFICIENTLY_CONTROLLED_GATES: [&str; 13] = [
+    "p", "u", "x", "z", "y", "h", "sx", "sxdg", "rx", "ry", "rz", "cx", "cz",
+];
+
+struct GenericControlledGate {
+    definition: CircuitData,
+}
+
+fn synth_mcrx(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, CircuitDataError> {
+    if num_ctrl_qubits == 0 {
+        CircuitData::from_standard_gates(
+            1,
+            [(StandardGate::RX, smallvec![param], smallvec![Qubit(0)])],
+            0.0.into(),
+        )
+    } else if num_ctrl_qubits == 1 {
+        CircuitData::from_standard_gates(
+            2,
+            [(
+                StandardGate::CU,
+                smallvec![param, (-PI / 2.0).into(), (PI / 2.0).into()],
+                (0..(num_ctrl_qubits + 1)).map(Qubit).collect(),
+            )],
+            0.0.into(),
+        )
+    } else {
+        mcu_graycode_circ(
+            num_ctrl_qubits,
+            &[param, (-PI / 2.0).into(), (PI / 2.0).into()],
+        )
+    }
+}
+
+fn synth_mcry(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, CircuitDataError> {
+    if num_ctrl_qubits == 0 {
+        CircuitData::from_standard_gates(
+            1,
+            [(StandardGate::RY, smallvec![param], smallvec![Qubit(0)])],
+            0.0.into(),
+        )
+    } else if num_ctrl_qubits == 1 {
+        CircuitData::from_standard_gates(
+            2,
+            [(
+                StandardGate::CU,
+                smallvec![param, 0.0.into(), 0.0.into()],
+                (0..(num_ctrl_qubits + 1)).map(Qubit).collect(),
+            )],
+            0.0.into(),
+        )
+    } else {
+        mcu_graycode_circ(num_ctrl_qubits, &[param, 0.0.into(), 0.0.into()])
+    }
+}
+
+fn synth_mcrz(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, CircuitDataError> {
+    if num_ctrl_qubits == 0 {
+        CircuitData::from_standard_gates(
+            1,
+            [(StandardGate::RZ, smallvec![param], smallvec![Qubit(0)])],
+            0.0.into(),
+        )
+    } else if num_ctrl_qubits == 1 {
+        let lam_2 = match param {
+            Param::ParameterExpression(expr) => {
+                Param::ParameterExpression(expr.div(&ParameterExpression::from_f64(2.0))?.into())
+            }
+            Param::Float(lam) => (lam / 2.0).into(),
+            Param::Int(_) | Param::Obj(_) => {
+                panic!("Int and obj are not supported by standard gates.")
+            }
+        };
+        let lam_2_neg = match &lam_2 {
+            Param::ParameterExpression(expr) => Param::ParameterExpression(expr.neg().into()),
+            Param::Float(lam) => (*lam * -1.0).into(),
+            Param::Int(_) | Param::Obj(_) => {
+                panic!("Int and obj are not supported by standard gates.")
+            }
+        };
+
+        CircuitData::from_standard_gates(
+            2,
+            [
+                (
+                    StandardGate::U,
+                    smallvec![0.0.into(), 0.0.into(), lam_2],
+                    smallvec![Qubit(num_ctrl_qubits + 1)],
+                ),
+                (
+                    StandardGate::CX,
+                    smallvec![],
+                    (0..(num_ctrl_qubits + 1)).map(Qubit).collect(),
+                ),
+                (
+                    StandardGate::U,
+                    smallvec![0.0.into(), 0.0.into(), lam_2_neg],
+                    smallvec![Qubit(num_ctrl_qubits + 1)],
+                ),
+                (
+                    StandardGate::CX,
+                    smallvec![],
+                    (0..(num_ctrl_qubits + 1)).map(Qubit).collect(),
+                ),
+            ],
+            0.0.into(),
+        )
+    } else {
+        mcsu2_real_diagonal_rz(param, num_ctrl_qubits)
+    }
+}
+
+fn mcsu2_real_diagonal_rz(
+    param: Param,
+    num_ctrl_qubits: u32,
+) -> Result<CircuitData, CircuitDataError> {
+    let theta = match param {
+        Param::ParameterExpression(expr) => {
+            Param::ParameterExpression(expr.neg().div(&ParameterExpression::from_f64(4.0))?.into())
+        }
+        Param::Float(theta) => (-theta / 4.0).into(),
+        Param::Int(_) | Param::Obj(_) => panic!("Int and obj are not supported by standard gates."),
+    };
+    let (rz_inverse, rz_inverse_params) = StandardGate::RZ
+        .inverse(std::slice::from_ref(&theta))
+        .expect("RZ inverse should work.");
+
+    let k_1 = num_ctrl_qubits.div_ceil(2) as usize;
+    let k_2 = (num_ctrl_qubits / 2) as usize;
+
+    let controls: Vec<Qubit> = (0..num_ctrl_qubits).map(Qubit).collect();
+    let target = Qubit(num_ctrl_qubits);
+
+    let mcx1 = crate::multi_controlled::synth_mcx_n_dirty_i15(k_1, false, false)?;
+    let mcx1_num_ancillas = mcx1.num_qubits() - k_1 - 1;
+    let mcx_1_qubits: Vec<Qubit> = (0..k_1)
+        .map(|idx| controls[idx])
+        .chain([target])
+        .chain((k_1..mcx1_num_ancillas).map(|idx| controls[idx]))
+        .collect();
+
+    let mcx2 = crate::multi_controlled::synth_mcx_n_dirty_i15(k_2, false, false)?;
+    let mcx2_num_ancillas = mcx2.num_qubits() - k_2 - 1;
+    let mcx_2_qubits: Vec<Qubit> = (0..k_1)
+        .map(|idx| controls[idx])
+        .chain([target])
+        .chain((k_2..mcx2_num_ancillas).map(|idx| controls[idx]))
+        .collect();
+
+    let mut circuit = CircuitData::with_capacity(
+        num_ctrl_qubits + 1,
+        0,
+        mcx1.len() + mcx2.len() + 6,
+        0.0.into(),
+    )?;
+
+    compose_circuit(&mut circuit, mcx1.clone(), &mcx_1_qubits);
+    circuit.push_standard_gate(StandardGate::RZ, std::slice::from_ref(&theta), &[target])?;
+
+    compose_circuit(&mut circuit, mcx2.clone(), &mcx_2_qubits);
+    circuit.push_standard_gate(rz_inverse, &rz_inverse_params, &[target])?;
+
+    compose_circuit(&mut circuit, mcx1, &mcx_1_qubits);
+    circuit.push_standard_gate(StandardGate::RZ, std::slice::from_ref(&theta), &[target])?;
+
+    compose_circuit(&mut circuit, mcx2, &mcx_2_qubits);
+    circuit.push_standard_gate(rz_inverse, &rz_inverse_params, &[target])?;
+
+    Ok(circuit)
+}
+
+fn mcu_graycode(num_bits: usize) -> Vec<String> {
+    let mut result: Vec<u32> = vec![0];
+    for num in 0..num_bits {
+        let mut temp = vec![];
+        result
+            .iter()
+            .rev()
+            .inspect(|val| temp.push(**val + 2_u32.pow(num as u32)));
+        result.extend(temp);
+    }
+    Vec::from_iter(result.iter().map(|num| format!("{num:num_bits$b}")))
+}
+
+fn mcu_graycode_circ(
+    num_ctrl_qubits: u32,
+    params: &[Param],
+) -> Result<CircuitData, CircuitDataError> {
+    let mut circ =
+        CircuitData::with_capacity(num_ctrl_qubits + 1, 0, num_ctrl_qubits as usize, 0.0.into())?;
+    let qargs: Vec<Qubit> = (0..(num_ctrl_qubits + 1)).map(Qubit).collect();
+    let gray = mcu_graycode(num_ctrl_qubits as usize);
+    let mut last_pattern = None;
+    for pattern in gray.iter() {
+        if !pattern.contains("1") {
+            continue;
+        }
+        if last_pattern.is_none() {
+            last_pattern = Some(pattern);
+        }
+
+        // We proved the pattern contains '1'
+        let lm_pos = pattern.find("1").unwrap();
+        let last_unwrapped = last_pattern.unwrap();
+        let pos = pattern
+            .chars()
+            .zip(last_unwrapped.chars())
+            .map(|(i, j)| i != j)
+            .position(|idx| idx);
+
+        if let Some(pos) = pos {
+            if pos != lm_pos {
+                circ.push_standard_gate(StandardGate::CX, &[], &[qargs[lm_pos], qargs[pos]]);
+            } else {
+                for index in pattern
+                    .chars()
+                    .enumerate()
+                    .filter_map(|(idx, char)| (char == '1').then_some(idx))
+                {
+                    circ.push_standard_gate(StandardGate::CX, &[], &[qargs[index], qargs[lm_pos]])?;
+                }
+            }
+        }
+
+        if pattern.chars().filter(|bit| *bit == '1').count() % 2 == 0 {
+            let new_params: Vec<Param> = params
+                .iter()
+                .cloned()
+                .map(|param| match param {
+                    Param::ParameterExpression(expr) => {
+                        Ok(Param::ParameterExpression(expr.neg().into()))
+                    }
+                    Param::Float(f) => Ok((-f).into()),
+                    // This is currently unsupported
+                    Param::Int(_) | Param::Obj(_) => Err(CircuitDataError::InvalidParameter),
+                })
+                .collect::<Result<_, CircuitDataError>>()?;
+            circ.push_standard_gate(
+                StandardGate::CU,
+                &new_params,
+                &[qargs[lm_pos], qargs[qargs.len() - 1]],
+            )?;
+        } else {
+            circ.push_standard_gate(
+                StandardGate::CU,
+                params,
+                &[qargs[lm_pos], qargs[qargs.len() - 1]],
+            )?;
+        }
+        last_pattern = Some(pattern);
+    }
+    Ok(circ)
+}
+
+fn compose_circuit(
+    circ: &mut CircuitData,
+    mc_definition: CircuitData,
+    qubits: &[Qubit],
+) -> Result<(), DAGError> {
+    let mut circ_as_dag = DAGCircuit::from_circuit_data(circ, false, None, None)?;
+
+    let mc_definition_as_dag = DAGCircuit::from_circuit_data(&mc_definition, false, None, None)?;
+
+    circ_as_dag.compose(
+        &mc_definition_as_dag,
+        Some(qubits),
+        None,
+        Default::default(),
+        false,
+    )?;
+
+    *circ = CircuitData::from_dag_ref(&circ_as_dag)?;
+    Ok(())
+}
+
+fn apply_basic_controlled_gate(
+    definition: &mut CircuitData,
+    gate: StandardGate,
+    params: &[Param],
+) -> Result<(), CircuitDataError> {
+    // Since this originates from `native_add_control` this should fully result
+    // in the control register being the first one here, and the target register
+    // being the second.
+    let qregs = definition.qregs();
+    let [q_ctrl, q_trgt] = [&qregs[0], &qregs[1]];
+    let ctrl_bits: Vec<Qubit> = q_ctrl
+        .iter()
+        .map(|bit| definition.qubits().find(&bit))
+        .collect::<Option<_>>()
+        .expect("Qubit should be present in original circuit");
+    let target_bits: Vec<Qubit> = q_trgt
+        .iter()
+        .map(|bit| definition.qubits().find(&bit))
+        .collect::<Option<_>>()
+        .expect("Qubit should be present in original circuit");
+    let all_qubits: Vec<Qubit> = ctrl_bits
+        .iter()
+        .chain(target_bits.iter())
+        .copied()
+        .collect();
+    let num_ctrl_qubits = q_ctrl.len();
+    match gate {
+        StandardGate::X => {
+            let new_def = crate::multi_controlled::synth_mcx_noaux_sp22(num_ctrl_qubits)?;
+            compose_circuit(definition, new_def, &all_qubits);
+        }
+        StandardGate::Phase => {
+            let circ =
+                crate::multi_controlled::synth_mcp_noaux_sp22(num_ctrl_qubits, params[0].clone())?;
+            compose_circuit(definition, circ, &all_qubits);
+        }
+        StandardGate::Z => {
+            definition.push_standard_gate(StandardGate::H, &[], &target_bits)?;
+            let new_def = crate::multi_controlled::synth_mcx_noaux_sp22(num_ctrl_qubits)?;
+            compose_circuit(definition, new_def, &all_qubits);
+            definition.push_standard_gate(StandardGate::H, &[], &target_bits)?;
+        }
+        StandardGate::Y => {
+            definition.push_standard_gate(StandardGate::Sdg, &[], &target_bits)?;
+            let new_def = crate::multi_controlled::synth_mcx_noaux_sp22(num_ctrl_qubits)?;
+            compose_circuit(definition, new_def, &all_qubits);
+            definition.push_standard_gate(StandardGate::S, &[], &target_bits)?;
+        }
+        StandardGate::H => {
+            definition.push_standard_gate(StandardGate::S, &[], &target_bits)?;
+            definition.push_standard_gate(StandardGate::H, &[], &target_bits)?;
+            definition.push_standard_gate(StandardGate::T, &[], &target_bits)?;
+            let new_def = crate::multi_controlled::synth_mcx_noaux_sp22(num_ctrl_qubits)
+                .expect("MCX composition should be infallible.");
+            compose_circuit(definition, new_def, &all_qubits);
+            definition.push_standard_gate(StandardGate::Tdg, &[], &target_bits)?;
+            definition.push_standard_gate(StandardGate::H, &[], &target_bits)?;
+            definition.push_standard_gate(StandardGate::Sdg, &[], &target_bits)?;
+        }
+        StandardGate::SX => {
+            definition.push_standard_gate(StandardGate::H, &[], &target_bits)?;
+            let new_def =
+                crate::multi_controlled::synth_mcp_noaux_sp22(num_ctrl_qubits, (PI / 2.0).into())?;
+            compose_circuit(definition, new_def, &all_qubits);
+            definition.push_standard_gate(StandardGate::H, &[], &target_bits)?;
+        }
+        StandardGate::SXdg => {
+            definition.push_standard_gate(StandardGate::H, &[], &target_bits)?;
+            let new_def = crate::multi_controlled::synth_mcp_noaux_sp22(
+                num_ctrl_qubits,
+                (3.0 * PI / 2.0).into(),
+            )?;
+            compose_circuit(definition, new_def, &all_qubits);
+            definition.push_standard_gate(StandardGate::H, &[], &target_bits)?;
+        }
+        StandardGate::RX => {
+            let new_def = synth_mcrx(params[0].clone(), num_ctrl_qubits as u32)?;
+            compose_circuit(definition, new_def, &all_qubits);
+        }
+        StandardGate::RY => {
+            let new_def = synth_mcry(params[0].clone(), num_ctrl_qubits as u32)?;
+            compose_circuit(definition, new_def, &all_qubits);
+        }
+        StandardGate::RZ => {
+            let new_def = synth_mcrz(params[0].clone(), num_ctrl_qubits as u32)?;
+            compose_circuit(definition, new_def, &all_qubits);
+        }
+        StandardGate::U => todo!(),
+        StandardGate::CX => todo!(),
+        StandardGate::CZ => todo!(),
+        _ => return Ok(()),
+    };
+    Ok(())
+}
+
+fn native_add_control(
+    gate: StandardGate,
+    params: &[Param],
+    control_state: &[bool],
+) -> PackedOperation {
+    let _control_state_num = control_state
+        .iter()
+        .map(|is_open| is_open.then(|| '0').unwrap_or('1'))
+        .collect::<String>();
+    let target_num_qubits = gate.num_qubits();
+    let control_num_qubits = control_state.len();
+    let mut controlled_definition =
+        CircuitData::new(None, None, 0.0.into()).expect("Empty circuit should be able to build.");
+
+    let q_control = QuantumRegister::new_owning("control", control_num_qubits as u32);
+    let q_target = QuantumRegister::new_owning("control", target_num_qubits);
+
+    for reg in [q_control, q_target] {
+        controlled_definition
+            .add_qreg(reg, true)
+            .expect("Registers should not exist in circuit.");
+    }
+
+    if EFFICIENTLY_CONTROLLED_GATES.contains(&gate.name()) {
+        apply_basic_controlled_gate(&mut controlled_definition, gate, params)
+            .expect("Controlled gate should be composable.")
+    }
+    todo!()
 }
