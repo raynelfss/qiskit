@@ -12,6 +12,7 @@
 
 use smallvec::smallvec;
 use std::f64::consts::PI;
+use thiserror::Error;
 
 use qiskit_circuit::Qubit;
 use qiskit_circuit::bit::QuantumRegister;
@@ -22,12 +23,24 @@ use qiskit_circuit::operations::{
 };
 use qiskit_circuit::parameter::parameter_expression::ParameterExpression;
 
+const EFFICIENTLY_CONTROLLED_GATES: [&str; 13] = [
+    "p", "u", "x", "z", "y", "h", "sx", "sxdg", "rx", "ry", "rz", "cx", "cz",
+];
 #[derive(Clone, Debug, PartialEq)]
 pub struct EfficientlyControlledGate {
     base_gate: StandardGate,
     control_state: u32,
     num_ctrl_bits: u32,
     name: String,
+}
+
+// TODO: Remove this once we have added `CircuitData::compose`.
+#[derive(Debug, Error)]
+pub enum EControlledGateError {
+    #[error(transparent)]
+    CircuitBuilding(#[from] CircuitDataError),
+    #[error(transparent)]
+    DAGCompose(#[from] DAGError),
 }
 
 impl EfficientlyControlledGate {
@@ -85,6 +98,28 @@ impl EfficientlyControlledGate {
             name,
         })
     }
+
+    fn try_define(&self, params: &[Param]) -> Result<Option<CircuitData>, EControlledGateError> {
+        if params.len() as u32 != self.num_params() {
+            return Ok(None);
+        }
+        let target_num_qubits = self.base_gate.num_qubits();
+        let mut controlled_definition = CircuitData::new(None, None, 0.0.into())
+            .expect("Empty circuit should be able to build.");
+
+        let q_control = QuantumRegister::new_owning("control", self.num_ctrl_bits);
+        let q_target = QuantumRegister::new_owning("target", target_num_qubits);
+
+        for reg in [q_control, q_target] {
+            controlled_definition
+                .add_qreg(reg, true)
+                .expect("Registers should not exist in circuit.");
+        }
+
+        apply_basic_controlled_gate(&mut controlled_definition, &self.base_gate, params)?;
+
+        Ok(Some(controlled_definition))
+    }
 }
 
 impl Operation for EfficientlyControlledGate {
@@ -115,25 +150,7 @@ impl CustomOperation for EfficientlyControlledGate {
     }
 
     fn definition(&self, params: &[Param]) -> Option<CircuitData> {
-        if params.len() as u32 != self.num_params() {
-            return None;
-        }
-        let target_num_qubits = self.base_gate.num_qubits();
-        let mut controlled_definition = CircuitData::new(None, None, 0.0.into())
-            .expect("Empty circuit should be able to build.");
-
-        let q_control = QuantumRegister::new_owning("control", self.num_ctrl_bits);
-        let q_target = QuantumRegister::new_owning("target", target_num_qubits);
-
-        for reg in [q_control, q_target] {
-            controlled_definition
-                .add_qreg(reg, true)
-                .expect("Registers should not exist in circuit.");
-        }
-
-        apply_basic_controlled_gate(&mut controlled_definition, &self.base_gate, params).ok()?;
-
-        Some(controlled_definition)
+        self.try_define(params).unwrap_or_default()
     }
 
     fn num_ctrl_qubits(&self) -> Option<std::num::NonZero<u32>> {
@@ -141,19 +158,16 @@ impl CustomOperation for EfficientlyControlledGate {
     }
 }
 
-const EFFICIENTLY_CONTROLLED_GATES: [&str; 13] = [
-    "p", "u", "x", "z", "y", "h", "sx", "sxdg", "rx", "ry", "rz", "cx", "cz",
-];
-
-fn synth_mcrx(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, CircuitDataError> {
+/// Applies a synthesized Multi-Controlled X Gate to a circuit
+fn synth_mcrx(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, EControlledGateError> {
     if num_ctrl_qubits == 0 {
-        CircuitData::from_standard_gates(
+        Ok(CircuitData::from_standard_gates(
             1,
             [(StandardGate::RX, smallvec![param], smallvec![Qubit(0)])],
             0.0.into(),
-        )
+        )?)
     } else if num_ctrl_qubits == 1 {
-        CircuitData::from_standard_gates(
+        Ok(CircuitData::from_standard_gates(
             2,
             [(
                 StandardGate::CU,
@@ -161,7 +175,7 @@ fn synth_mcrx(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, Circuit
                 (0..(num_ctrl_qubits + 1)).map(Qubit).collect(),
             )],
             0.0.into(),
-        )
+        )?)
     } else {
         mcu_graycode_circ(
             num_ctrl_qubits,
@@ -170,15 +184,16 @@ fn synth_mcrx(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, Circuit
     }
 }
 
-fn synth_mcry(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, CircuitDataError> {
+/// Applies a synthesized Multi-Controlled Y Gate to a circuit
+fn synth_mcry(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, EControlledGateError> {
     if num_ctrl_qubits == 0 {
-        CircuitData::from_standard_gates(
+        Ok(CircuitData::from_standard_gates(
             1,
             [(StandardGate::RY, smallvec![param], smallvec![Qubit(0)])],
             0.0.into(),
-        )
+        )?)
     } else if num_ctrl_qubits == 1 {
-        CircuitData::from_standard_gates(
+        Ok(CircuitData::from_standard_gates(
             2,
             [(
                 StandardGate::CU,
@@ -186,24 +201,27 @@ fn synth_mcry(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, Circuit
                 (0..(num_ctrl_qubits + 1)).map(Qubit).collect(),
             )],
             0.0.into(),
-        )
+        )?)
     } else {
         mcu_graycode_circ(num_ctrl_qubits, &[param, 0.0.into(), 0.0.into()])
     }
 }
 
-fn synth_mcrz(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, CircuitDataError> {
+/// Applies a Multi-Controlled Z Gate to a circuit
+fn synth_mcrz(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, EControlledGateError> {
     if num_ctrl_qubits == 0 {
-        CircuitData::from_standard_gates(
+        Ok(CircuitData::from_standard_gates(
             1,
             [(StandardGate::RZ, smallvec![param], smallvec![Qubit(0)])],
             0.0.into(),
-        )
+        )?)
     } else if num_ctrl_qubits == 1 {
         let lam_2 = match param {
-            Param::ParameterExpression(expr) => {
-                Param::ParameterExpression(expr.div(&ParameterExpression::from_f64(2.0))?.into())
-            }
+            Param::ParameterExpression(expr) => Param::ParameterExpression(
+                expr.div(&ParameterExpression::from_f64(2.0))
+                    .map_err(CircuitDataError::from)?
+                    .into(),
+            ),
             Param::Float(lam) => (lam / 2.0).into(),
             Param::Int(_) | Param::Obj(_) => {
                 panic!("Int and obj are not supported by standard gates.")
@@ -217,7 +235,7 @@ fn synth_mcrz(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, Circuit
             }
         };
 
-        CircuitData::from_standard_gates(
+        Ok(CircuitData::from_standard_gates(
             2,
             [
                 (
@@ -242,7 +260,7 @@ fn synth_mcrz(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, Circuit
                 ),
             ],
             0.0.into(),
-        )
+        )?)
     } else {
         mcsu2_real_diagonal_rz(param, num_ctrl_qubits)
     }
@@ -251,11 +269,14 @@ fn synth_mcrz(param: Param, num_ctrl_qubits: u32) -> Result<CircuitData, Circuit
 fn mcsu2_real_diagonal_rz(
     param: Param,
     num_ctrl_qubits: u32,
-) -> Result<CircuitData, CircuitDataError> {
+) -> Result<CircuitData, EControlledGateError> {
     let theta = match param {
-        Param::ParameterExpression(expr) => {
-            Param::ParameterExpression(expr.neg().div(&ParameterExpression::from_f64(4.0))?.into())
-        }
+        Param::ParameterExpression(expr) => Param::ParameterExpression(
+            expr.neg()
+                .div(&ParameterExpression::from_f64(4.0))
+                .map_err(CircuitDataError::from)?
+                .into(),
+        ),
         Param::Float(theta) => (-theta / 4.0).into(),
         Param::Int(_) | Param::Obj(_) => panic!("Int and obj are not supported by standard gates."),
     };
@@ -292,16 +313,16 @@ fn mcsu2_real_diagonal_rz(
         0.0.into(),
     )?;
 
-    compose_circuit(&mut circuit, mcx1.clone(), &mcx_1_qubits);
+    compose_circuit(&mut circuit, mcx1.clone(), &mcx_1_qubits)?;
     circuit.push_standard_gate(StandardGate::RZ, std::slice::from_ref(&theta), &[target])?;
 
-    compose_circuit(&mut circuit, mcx2.clone(), &mcx_2_qubits);
+    compose_circuit(&mut circuit, mcx2.clone(), &mcx_2_qubits)?;
     circuit.push_standard_gate(rz_inverse, &rz_inverse_params, &[target])?;
 
-    compose_circuit(&mut circuit, mcx1, &mcx_1_qubits);
+    compose_circuit(&mut circuit, mcx1, &mcx_1_qubits)?;
     circuit.push_standard_gate(StandardGate::RZ, std::slice::from_ref(&theta), &[target])?;
 
-    compose_circuit(&mut circuit, mcx2, &mcx_2_qubits);
+    compose_circuit(&mut circuit, mcx2, &mcx_2_qubits)?;
     circuit.push_standard_gate(rz_inverse, &rz_inverse_params, &[target])?;
 
     Ok(circuit)
@@ -314,7 +335,7 @@ fn mcu_graycode(num_bits: usize) -> Vec<String> {
         result
             .iter()
             .rev()
-            .inspect(|val| temp.push(**val + 2_u32.pow(num as u32)));
+            .for_each(|val| temp.push(*val + 2_u32.pow(num as u32)));
         result.extend(temp);
     }
     Vec::from_iter(result.iter().map(|num| format!("{num:num_bits$b}")))
@@ -323,7 +344,7 @@ fn mcu_graycode(num_bits: usize) -> Vec<String> {
 fn mcu_graycode_circ(
     num_ctrl_qubits: u32,
     params: &[Param],
-) -> Result<CircuitData, CircuitDataError> {
+) -> Result<CircuitData, EControlledGateError> {
     let mut circ =
         CircuitData::with_capacity(num_ctrl_qubits + 1, 0, num_ctrl_qubits as usize, 0.0.into())?;
     let qargs: Vec<Qubit> = (0..(num_ctrl_qubits + 1)).map(Qubit).collect();
@@ -348,7 +369,7 @@ fn mcu_graycode_circ(
 
         if let Some(pos) = pos {
             if pos != lm_pos {
-                circ.push_standard_gate(StandardGate::CX, &[], &[qargs[lm_pos], qargs[pos]]);
+                circ.push_standard_gate(StandardGate::CX, &[], &[qargs[lm_pos], qargs[pos]])?;
             } else {
                 for index in pattern
                     .chars()
@@ -395,7 +416,7 @@ fn compose_circuit(
     circ: &mut CircuitData,
     mc_definition: CircuitData,
     qubits: &[Qubit],
-) -> Result<(), DAGError> {
+) -> Result<(), EControlledGateError> {
     let mut circ_as_dag = DAGCircuit::from_circuit_data(circ, false, None, None)?;
 
     let mc_definition_as_dag = DAGCircuit::from_circuit_data(&mc_definition, false, None, None)?;
@@ -416,7 +437,7 @@ fn apply_basic_controlled_gate(
     definition: &mut CircuitData,
     gate: &StandardGate,
     params: &[Param],
-) -> Result<(), DAGError> {
+) -> Result<(), EControlledGateError> {
     // Since this originates from `native_add_control` this should fully result
     // in the control register being the first one here, and the target register
     // being the second.
@@ -561,7 +582,7 @@ fn apply_basic_controlled_gate(
 
             definition.push_standard_gate(StandardGate::H, params, &target_bits[1..])?;
         }
-        _ => return Err(DAGError::General("Gate is not basic.".to_string())),
+        _ => return Err(DAGError::General("Gate is not basic.".to_string()).into()),
     };
     Ok(())
 }
