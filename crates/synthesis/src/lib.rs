@@ -12,6 +12,7 @@
 
 pub mod clifford;
 pub mod discrete_basis;
+pub mod efficiently_controlled_gate;
 pub mod euler_one_qubit_decomposer;
 pub mod evolution;
 pub mod linalg;

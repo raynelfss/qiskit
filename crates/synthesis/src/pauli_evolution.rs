@@ -22,6 +22,8 @@ use qiskit_circuit::{
 };
 use smallvec::{SmallVec, smallvec};
 
+use crate::efficiently_controlled_gate::EfficientlyControlledGate;
+
 // custom type for a more readable code
 pub type Instruction = (
     PackedOperation,
@@ -380,6 +382,10 @@ fn cx_fountain(qubits: Vec<Qubit>) -> Box<dyn DoubleEndedIterator<Item = Instruc
 
 /// Add controls to a standard gate with a specified control state.
 fn add_control(gate: StandardGate, params: &[Param], control_state: &[bool]) -> PackedOperation {
+    if let Some(control_gate) = EfficientlyControlledGate::new(gate, control_state) {
+        return PackedOperation::from_custom_operation(Box::new(control_gate));
+    }
+
     // This function does not return a PyResult to keep the evolution functions free from PyO3.
     // We know that all calls here should be valid and unwrap eagerly.
     Python::attach(|py| {
