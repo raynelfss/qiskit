@@ -554,7 +554,7 @@ fn separate_dag(dag: &mut DAGCircuit) -> Result<Vec<DAGCircuit>, DisjointLayoutE
 
 #[pyfunction(name = "combine_barriers")]
 fn py_combine_barriers(dag: &mut PyDAGCircuit, retain_uuid: bool) -> PyResult<()> {
-    Ok(combine_barriers(dag.try_write()?, retain_uuid)?)
+    combine_barriers(dag.try_write()?, retain_uuid).map_err(Into::into)
 }
 
 pub fn combine_barriers(dag: &mut DAGCircuit, retain_uuid: bool) -> Result<(), DAGError> {
