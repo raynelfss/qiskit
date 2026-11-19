@@ -43,7 +43,7 @@ qiskit-qasm3.workspace = true
 qiskit-qpy.workspace = true
 qiskit-cext = { workspace = true, features = ["python_binding"] }
 qiskit-cext-vtable = { workspace = true, features = ["python_binding", "addr"] }
-qiskit-transpiler.workspace = true
+qiskit-transpiler = { workspace = true, features = ["py"] }
 qiskit-util.workspace = true
 qiskit-quantum-info = { workspace = true, features = ["python"] }
 qiskit-synthesis.workspace = true
