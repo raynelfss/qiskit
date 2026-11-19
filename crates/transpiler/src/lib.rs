@@ -32,7 +32,10 @@ pub use transpiler::transpile;
 
 mod gate_metrics;
 
+#[cfg(feature = "py")]
 use pyo3::import_exception;
 
+#[cfg(feature = "py")]
 import_exception! {qiskit.exceptions, QiskitError}
+#[cfg(feature = "py")]
 import_exception! {qiskit.transpiler.exceptions, TranspilerError}

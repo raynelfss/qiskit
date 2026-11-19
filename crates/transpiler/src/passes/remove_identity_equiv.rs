@@ -10,6 +10,7 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 use num_complex::Complex64;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
@@ -20,7 +21,7 @@ use crate::gate_metrics::rotation_trace_and_dim;
 use crate::passes::common::{MINIMUM_TOL, average_gate_fidelity_below_tol};
 use crate::target::Target;
 use qiskit_circuit::PhysicalQubit;
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, NodeType, PyDAGCircuit};
 use qiskit_circuit::imports;
 use qiskit_circuit::operations::Param;
 use qiskit_circuit::operations::StandardGate;
@@ -33,6 +34,11 @@ use qiskit_util::getenv_use_multiple_threads;
 // https://github.com/Qiskit/qiskit/pull/14719 it can be tweaked
 // if the performance of this pass changes over time.
 const PARALLEL_THRESHOLD: usize = 50_000;
+
+#[cfg(not(feature = "py"))]
+type RemoveIdEqResult<T> = Result<T, DAGError>;
+#[cfg(feature = "py")]
+type RemoveIdEqResult<T> = PyResult<T>;
 
 /// Fidelity-based computation to check whether an operation `inst` is equivalent
 /// to identity up to a global phase.
@@ -55,7 +61,7 @@ pub fn is_identity_equiv<F>(
     matrix_from_definition: bool,
     matrix_from_definition_max_qubits: Option<u32>,
     error_cutoff_fn: F,
-) -> PyResult<Option<f64>>
+) -> RemoveIdEqResult<Option<f64>>
 where
     F: Fn(&PackedInstruction) -> f64,
 {
@@ -169,6 +175,7 @@ where
     }
 
     // Special handling for pauli evolution gates.
+    #[cfg(feature = "py")]
     if view.name() == "PauliEvolution"
         && let OperationRef::PyCustom(py_gate) = view
     {
@@ -209,6 +216,7 @@ where
     Ok(None)
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "remove_identity_equiv", signature=(dag, approx_degree=Some(1.0), target=None))]
 pub fn py_remove_identity_equiv(
@@ -240,7 +248,7 @@ pub fn run_remove_identity_equiv(
     dag: &mut DAGCircuit,
     approx_degree: Option<f64>,
     target: Option<&Target>,
-) -> PyResult<()> {
+) -> RemoveIdEqResult<()> {
     // Minimum threshold to compare average gate fidelity to 1. This is chosen to account
     // for roundoff errors and to be consistent with other places.
     let get_error_cutoff = |inst: &PackedInstruction| -> f64 {
@@ -301,11 +309,11 @@ pub fn run_remove_identity_equiv(
                         None
                     }
                 })
-                .collect::<PyResult<Vec<(NodeIndex, f64)>>>()?
+                .collect::<RemoveIdEqResult<Vec<(NodeIndex, f64)>>>()?
         } else {
             dag.op_nodes(false)
                 .filter_map(|x| process_node(x.0, x.1).transpose())
-                .collect::<PyResult<Vec<(NodeIndex, f64)>>>()?
+                .collect::<RemoveIdEqResult<Vec<(NodeIndex, f64)>>>()?
         };
 
     for (node, phase_update) in remove_list {
@@ -316,6 +324,7 @@ pub fn run_remove_identity_equiv(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn remove_identity_equiv_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_remove_identity_equiv))?;
     Ok(())

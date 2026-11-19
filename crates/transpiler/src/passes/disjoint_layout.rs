@@ -14,9 +14,13 @@ use std::ops::DerefMut;
 
 use hashbrown::{HashMap, HashSet};
 
+#[cfg(feature = "py")]
 use pyo3::create_exception;
+#[cfg(feature = "py")]
 use pyo3::intern;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::types::PyList;
 use qiskit_circuit::dag_circuit::DAGError;
 use rustworkx_core::connectivity::connected_components;
@@ -26,17 +30,22 @@ use rustworkx_core::petgraph::prelude::*;
 use rustworkx_core::petgraph::visit::{IntoEdgeReferences, IntoNodeReferences, NodeFiltered};
 use uuid::Uuid;
 
+#[cfg(feature = "py")]
 use crate::TranspilerError;
 use crate::target::{Qargs, Target};
 use qiskit_circuit::bit::ShareableQubit;
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
 use qiskit_circuit::operations::{Operation, OperationRef, StandardInstruction};
 use qiskit_circuit::packed_instruction::PackedOperation;
 use qiskit_circuit::{
     BlockMapper, BlocksMode, Clbit, PhysicalQubit, Qubit, VarsMode, VirtualQubit,
 };
+#[cfg(feature = "py")]
 use qiskit_util::py::ImportOnceCell;
 
+#[cfg(feature = "py")]
 create_exception!(qiskit, MultiQEncountered, pyo3::exceptions::PyException);
 
 #[derive(Debug, thiserror::Error)]
@@ -51,6 +60,7 @@ pub enum DisjointLayoutError {
     DAGCircuit(#[from] DAGError),
 }
 
+#[cfg(feature = "py")]
 impl From<DisjointLayoutError> for PyErr {
     fn from(value: DisjointLayoutError) -> Self {
         match value {
@@ -63,6 +73,7 @@ impl From<DisjointLayoutError> for PyErr {
     }
 }
 
+#[cfg(feature = "py")]
 static COUPLING_MAP: ImportOnceCell =
     ImportOnceCell::new("qiskit.transpiler.coupling", "CouplingMap");
 
@@ -111,6 +122,7 @@ fn subgraph(graph: &CouplingMap, node_set: &HashSet<NodeIndex>) -> CouplingMap {
     out_graph
 }
 
+#[cfg(feature = "py")]
 #[pyfunction(name = "run_pass_over_connected_components")]
 pub fn py_run_pass_over_connected_components(
     dag: Bound<PyDAGCircuit>,

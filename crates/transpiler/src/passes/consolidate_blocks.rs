@@ -12,25 +12,34 @@
 
 use std::cell::RefCell;
 
+use qiskit_circuit::dag_circuit::DAGError;
 use rayon::prelude::*;
 use thread_local::ThreadLocal;
 
+#[cfg(feature = "py")]
 use super::optimize_1q_gates_decomposition::matmul_1q;
 use hashbrown::{HashMap, HashSet};
 use nalgebra::{Matrix2, U4};
 use ndarray::ArrayView2;
 use ndarray::aview2;
 use num_complex::Complex64;
+#[cfg(feature = "py")]
 use numpy::PyReadonlyArray2;
+#[cfg(feature = "py")]
 use pyo3::exceptions::PyIndexError;
+#[cfg(feature = "py")]
 use pyo3::intern;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 use qiskit_circuit::Qubit;
 use qiskit_circuit::circuit_data::CircuitData;
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
 use qiskit_circuit::gate_matrix::{
     CH_GATE, CX_GATE, CY_GATE, CZ_GATE, DCX_GATE, ECR_GATE, ISWAP_GATE, ONE_QUBIT_IDENTITY,
 };
+#[cfg(feature = "py")]
 use qiskit_circuit::imports::QI_OPERATOR;
 use qiskit_circuit::interner::Interned;
 use qiskit_circuit::operations::StandardGate;
@@ -70,6 +79,7 @@ pub enum DecomposerType {
 // `TwoQubitControlledUDecomposer`; that clone is usually a mistake.  Using a reference type within
 // this code would require a greater refactor so that the Python-space method
 // `py_run_consolidate_blocks` is not the actual worker function.
+#[cfg(feature = "py")]
 impl<'a, 'py> pyo3::FromPyObject<'a, 'py> for DecomposerType {
     type Error = pyo3::CastError<'a, 'py>;
 
@@ -233,7 +243,7 @@ fn should_substitute(
     phys_qargs: &mut PhysQargsMap,
     force_consolidate: bool,
     tol: f64,
-) -> PyResult<ConsolidateResult> {
+) -> Result<ConsolidateResult, DAGError> {
     block_qargs.clear();
     if block.len() == 1 {
         let inst_node = block[0];
@@ -316,6 +326,9 @@ fn should_substitute(
             }),
             Param::Float(0.),
         )?;
+        #[cfg(not(feature = "py"))]
+        let matrix = todo!("Implement using QI unitary composer.");
+        #[cfg(feature = "py")]
         let matrix = Python::attach(|py| -> PyResult<_> {
             let circuit = circuit_data.into_py_quantum_circuit(py)?;
             let matrix = QI_OPERATOR
@@ -399,7 +412,7 @@ fn consolidation_analysis_parallel<'a>(
     qubit_map: Option<Vec<PhysicalQubit>>,
     force_consolidate: bool,
     tol: f64,
-) -> PyResult<Vec<(&'a [NodeIndex], ConsolidateResult)>> {
+) -> Result<Vec<(&'a [NodeIndex], ConsolidateResult)>, DAGError> {
     let block_qargs = ThreadLocal::new();
     let phys_qargs = ThreadLocal::new();
     blocks
@@ -429,7 +442,7 @@ fn apply_consolidation(
     dag: &mut DAGCircuit,
     block: &[NodeIndex],
     consolidation: ConsolidateResult,
-) -> PyResult<()> {
+) -> Result<(), DAGError> {
     match consolidation {
         ConsolidateResult::NoConsolidate => {}
         ConsolidateResult::Identity(phase_update) => {
@@ -462,6 +475,7 @@ fn apply_consolidation(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
 #[pyo3(name = "consolidate_blocks", signature = (dag, decomposer, basis_gate_name, force_consolidate, target=None, basis_gates=None, blocks=None, runs=None, qubit_map=None, approximation_degree=None))]
@@ -680,7 +694,7 @@ pub fn run_consolidate_blocks(
     force_consolidate: bool,
     approximation_degree: Option<f64>,
     target: Option<&Target>,
-) -> PyResult<()> {
+) -> Result<(), DAGError> {
     let approximation_degree = approximation_degree.unwrap_or(1.0);
     let tol = MINIMUM_TOL.max(1. - approximation_degree);
 
@@ -732,6 +746,7 @@ pub fn run_consolidate_blocks(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn consolidate_blocks_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_consolidate_blocks))?;
     Ok(())

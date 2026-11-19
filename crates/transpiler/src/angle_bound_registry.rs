@@ -10,26 +10,37 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(not(feature = "py"))]
+use std::convert::Infallible;
+
 use hashbrown::HashMap;
 
-use pyo3::Python;
-use pyo3::exceptions::PyKeyError;
-use pyo3::prelude::*;
-use pyo3::types::PyDict;
+#[cfg(feature = "py")]
+use pyo3::{Python, exceptions::PyKeyError, prelude::*, types::PyDict};
 
+#[cfg(feature = "py")]
 use crate::TranspilerError;
 use qiskit_circuit::PhysicalQubit;
-use qiskit_circuit::dag_circuit::{DAGCircuit, PyDAGCircuit};
+use qiskit_circuit::dag_circuit::DAGCircuit;
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
 
 #[derive(Clone)]
 pub(crate) enum CallbackType {
+    #[cfg(feature = "py")]
     Python(Py<PyAny>),
     Native(fn(&[f64], &[PhysicalQubit]) -> DAGCircuit),
 }
 
+#[cfg(not(feature = "py"))]
+type CallbackResult<T> = Result<T, Infallible>;
+#[cfg(feature = "py")]
+type CallbackResult<T> = PyResult<T>;
+
 impl CallbackType {
-    fn call(&self, angles: &[f64], qubits: &[PhysicalQubit]) -> PyResult<DAGCircuit> {
+    fn call(&self, angles: &[f64], qubits: &[PhysicalQubit]) -> CallbackResult<DAGCircuit> {
         match self {
+            #[cfg(feature = "py")]
             Self::Python(inner) => {
                 let qubits: Vec<usize> = qubits.iter().map(|x| x.index()).collect();
                 Python::attach(|py| {
@@ -53,10 +64,14 @@ impl CallbackType {
 ///
 /// This class internally contains a mapping of instruction names from a :class:`.Target` to
 /// callbacks for wrapping angles that are outside the specified bounds.
-#[pyclass(module = "qiskit._accelerate.angle_bound_registry")]
-#[pyo3(name = "WrapAngleRegistry")]
+#[cfg(feature = "py")]
+#[pyclass(
+    module = "qiskit._accelerate.angle_bound_registry",
+    name = "WrapAngleRegistry"
+)]
 pub struct PyWrapAngleRegistry(WrapAngleRegistry);
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl PyWrapAngleRegistry {
     #[new]
@@ -71,10 +86,12 @@ impl PyWrapAngleRegistry {
         angles: Vec<f64>,
         qubits: Vec<PhysicalQubit>,
     ) -> PyResult<Option<PyDAGCircuit>> {
-        Ok(self
-            .0
-            .substitute_angle_bounds(name, &angles, &qubits)?
-            .map(Into::into))
+        match self.0.registry.get(name) {
+            Some(callback) => Some(callback.call(angles, qubits)).transpose(),
+            None => Err(PyKeyError::new_err(format!(
+                "Name '{name}' not in WrapAngleRegistry"
+            ))),
+        }
     }
 
     pub fn add_wrapper(&mut self, name: String, callback: Py<PyAny>) {
@@ -104,6 +121,7 @@ impl PyWrapAngleRegistry {
     }
 }
 
+#[cfg(feature = "py")]
 impl PyWrapAngleRegistry {
     pub fn get_inner(&self) -> &WrapAngleRegistry {
         &self.0
@@ -137,13 +155,11 @@ impl WrapAngleRegistry {
         name: &str,
         angles: &[f64],
         qubits: &[PhysicalQubit],
-    ) -> PyResult<Option<DAGCircuit>> {
-        match self.registry.get(name) {
-            Some(callback) => Some(callback.call(angles, qubits)).transpose(),
-            None => Err(PyKeyError::new_err(format!(
-                "Name '{name}' not in WrapAngleRegistry"
-            ))),
-        }
+    ) -> CallbackResult<Option<DAGCircuit>> {
+        self.registry
+            .get(name)
+            .map(|callback| callback.call(angles, qubits))
+            .transpose()
     }
 }
 
@@ -153,12 +169,14 @@ impl Default for WrapAngleRegistry {
     }
 }
 
+#[cfg(feature = "py")]
 impl Default for PyWrapAngleRegistry {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(feature = "py")]
 pub fn angle_bound_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PyWrapAngleRegistry>()?;
     Ok(())

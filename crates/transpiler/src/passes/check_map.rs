@@ -10,10 +10,14 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::wrap_pyfunction;
 
-use qiskit_circuit::dag_circuit::{DAGCircuit, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError};
 use qiskit_circuit::operations::Operation;
 use qiskit_circuit::{PhysicalQubit, Qubit};
 
@@ -23,7 +27,7 @@ fn recurse(
     dag: &DAGCircuit,
     target: &Target,
     wire_map: Option<&[Qubit]>,
-) -> PyResult<Option<(String, [u32; 2])>> {
+) -> Result<Option<(String, [u32; 2])>, DAGError> {
     let check_qubits = |qubits: &[Qubit]| -> bool {
         match wire_map {
             Some(wire_map) => {
@@ -71,6 +75,7 @@ fn recurse(
     Ok(None)
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "check_map")]
 pub fn py_run_check_map(
@@ -107,6 +112,7 @@ pub fn run_check_map<'a>(
         })
 }
 
+#[cfg(feature = "py")]
 pub fn check_map_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_check_map))?;
     Ok(())

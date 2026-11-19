@@ -10,9 +10,10 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, NodeType, PyDAGCircuit};
 use qiskit_circuit::imports::PAULI_EVOLUTION_GATE;
 use qiskit_circuit::instruction::Parameters;
 use qiskit_circuit::operations::{
@@ -25,6 +26,7 @@ use qiskit_circuit::{BlocksMode, Qubit, VarsMode};
 use super::common::{
     MINIMUM_TOL, average_gate_fidelity_below_tol, is_angle_close_to_multiple_of_pi_k,
 };
+#[cfg(feature = "py")]
 use crate::TranspilerError;
 use num_complex::Complex64;
 use qiskit_quantum_info::clifford::{Clifford, Pauli1q};
@@ -79,6 +81,7 @@ static HANDLED_INSTRUCTION_NAMES: [&str; 10] = [
     "pauli_product_measurement",
 ];
 
+#[cfg(feature = "py")]
 #[pyfunction(name = "run_litinski_transformation")]
 #[pyo3(signature = (dag, fix_clifford=true, insert_barrier=false, use_ppr=false, approximation_degree=1.0))]
 pub fn py_run_litinski_transformation(
@@ -101,13 +104,18 @@ pub fn py_run_litinski_transformation(
     }))
 }
 
+#[cfg(not(feature = "py"))]
+type LitResult<T> = Result<T, DAGError>;
+#[cfg(feature = "py")]
+type LitResult<T> = PyResult<T>;
+
 pub fn run_litinski_transformation(
     dag: &DAGCircuit,
     fix_clifford: bool,
     insert_barrier: bool,
     use_ppr: bool,
     approximation_degree: f64,
-) -> PyResult<Option<DAGCircuit>> {
+) -> Result<Option<DAGCircuit>, DAGError> {
     let op_counts = dag.get_op_counts();
     let tol = MINIMUM_TOL.max(1.0 - approximation_degree);
 

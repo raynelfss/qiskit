@@ -21,6 +21,7 @@ mod qubit_properties;
 pub use errors::TargetError;
 use foldhash::fast::RandomState;
 pub use instruction_properties::InstructionProperties;
+#[cfg(feature = "py")]
 use pyo3::types::IntoPyDict;
 pub use qargs::{Qargs, QargsRef};
 pub use qubit_properties::QubitProperties;
@@ -29,6 +30,7 @@ use std::{ops::Index, sync::OnceLock};
 
 use hashbrown::HashMap;
 use hashbrown::HashSet;
+#[cfg(feature = "py")]
 use pyo3::{
     IntoPyObjectExt,
     exceptions::{PyAttributeError, PyIndexError, PyKeyError, PyValueError},
@@ -43,19 +45,25 @@ use thiserror::Error;
 
 use qiskit_circuit::PhysicalQubit;
 use qiskit_circuit::circuit_data::{CircuitData, PyCircuitData};
+#[cfg(feature = "py")]
 use qiskit_circuit::circuit_instruction::OperationFromPython;
-use qiskit_circuit::instruction::{Instruction, Parameters, create_py_op};
+#[cfg(feature = "py")]
+use qiskit_circuit::instruction::create_py_op;
+use qiskit_circuit::instruction::{Instruction, Parameters};
 use qiskit_circuit::operations::{Operation, OperationRef, Param};
 use qiskit_circuit::packed_instruction::PackedOperation;
 
+#[cfg(feature = "py")]
 use crate::TranspilerError;
 use bounds::AngleBound;
 
 /// Represents a Qiskit `Gate` object or a Variadic instruction.
 /// Keeps a reference to its Python instance for caching purposes.
-#[derive(FromPyObject, Debug, Clone, IntoPyObjectRef)]
+#[cfg_attr(feature = "py", derive(FromPyObject, IntoPyObjectRef))]
+#[derive(Debug, Clone)]
 pub enum TargetOperation {
     Normal(NormalOperation),
+    #[cfg(feature = "py")]
     Variadic(Py<PyAny>),
 }
 
@@ -96,6 +104,7 @@ impl From<NormalOperation> for TargetOperation {
 pub struct NormalOperation {
     pub operation: PackedOperation,
     pub params: Option<Parameters<CircuitData>>,
+    #[cfg(feature = "py")]
     op_object: OnceLock<PyResult<Py<PyAny>>>,
 }
 
@@ -108,6 +117,7 @@ impl NormalOperation {
         Self {
             operation,
             params,
+            #[cfg(feature = "py")]
             op_object: OnceLock::new(),
         }
     }
@@ -129,6 +139,7 @@ impl Instruction for NormalOperation {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'py> IntoPyObject<'py> for NormalOperation {
     type Target = PyAny;
     type Output = Bound<'py, Self::Target>;
@@ -142,6 +153,7 @@ impl<'py> IntoPyObject<'py> for NormalOperation {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'a, 'py> IntoPyObject<'py> for &'a NormalOperation {
     type Target = PyAny;
     type Output = Borrowed<'a, 'py, Self::Target>;
@@ -158,6 +170,7 @@ impl<'a, 'py> IntoPyObject<'py> for &'a NormalOperation {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'a, 'py> FromPyObject<'a, 'py> for NormalOperation {
     type Error = <OperationFromPython<CircuitData> as FromPyObject<'a, 'py>>::Error;
 
@@ -177,6 +190,7 @@ impl Clone for NormalOperation {
         Self {
             operation: self.operation.clone(),
             params: self.params.clone(),
+            #[cfg(feature = "py")]
             op_object: OnceLock::new(),
         }
     }
@@ -205,30 +219,33 @@ This structure contains duplicates of every element in the Python counterpart of
 `gate_map`. Which improves access for Python while sacrificing a small amount of
 memory.
  */
-#[pyclass(
-    mapping,
-    subclass,
-    name = "BaseTarget",
-    module = "qiskit._accelerate.target"
+#[cfg_attr(
+    feature = "py",
+    pyclass(
+        mapping,
+        subclass,
+        name = "BaseTarget",
+        module = "qiskit._accelerate.target"
+    )
 )]
 #[derive(Clone, Debug)]
 pub struct Target {
-    #[pyo3(get, set)]
+    #[cfg_attr(feature = "py", pyo3(get, set))]
     pub description: Option<String>,
-    #[pyo3(get)]
+    #[cfg_attr(feature = "py", pyo3(get))]
     pub num_qubits: Option<u32>,
     pub dt: Option<f64>,
-    #[pyo3(get, set)]
+    #[cfg_attr(feature = "py", pyo3(get, set))]
     pub granularity: u32,
-    #[pyo3(get, set)]
+    #[cfg_attr(feature = "py", pyo3(get, set))]
     pub min_length: u32,
-    #[pyo3(get, set)]
+    #[cfg_attr(feature = "py", pyo3(get, set))]
     pub pulse_alignment: u32,
-    #[pyo3(get, set)]
+    #[cfg_attr(feature = "py", pyo3(get, set))]
     pub acquire_alignment: u32,
-    #[pyo3(get, set)]
+    #[cfg_attr(feature = "py", pyo3(get, set))]
     pub qubit_properties: Option<Vec<QubitProperties>>,
-    #[pyo3(get, set)]
+    #[cfg_attr(feature = "py", pyo3(get, set))]
     pub concurrent_measurements: Option<Vec<Vec<PhysicalQubit>>>,
     gate_map: IndexMap<String, TargetProperties>,
     global_operations: HashMap<u32, HashSet<String>>,
@@ -241,6 +258,7 @@ pub struct Target {
     has_angle_bounds: bool,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl Target {
     /// Create a new ``Target`` object
@@ -1416,6 +1434,7 @@ impl Target {
                         (Param::Float(obj_f), Param::ParameterExpression(expr)) => {
                             expr.try_to_value(true).is_ok_and(|value| value.eq(obj_f))
                         }
+                        #[cfg(feature = "py")]
                         _ => Python::attach(|py| python_compare(py, params, orig_params))
                             .expect("Error comparing Python parameters."),
                     };
@@ -1694,6 +1713,7 @@ fn check_obj_params(parameters: &[Param], obj: &NormalOperation) -> bool {
     true
 }
 
+#[cfg(feature = "py")]
 pub fn python_compare<'a, T, U>(py: Python<'a>, obj: T, other: U) -> PyResult<bool>
 where
     T: IntoPyObject<'a>,
@@ -1714,6 +1734,7 @@ where
 ///
 /// Returns:
 ///     The estimated fidelity. If any operation can't be found in the target it will return None.
+#[cfg(feature = "py")]
 #[pyfunction(name = "estimate_fidelity")]
 pub fn py_estimate_fidelity(circuit: &PyCircuitData, target: &Target) -> Option<f64> {
     estimate_fidelity(circuit, target)
@@ -1772,6 +1793,7 @@ pub fn estimate_fidelity(circuit: &CircuitData, target: &Target) -> Option<f64> 
         .product()
 }
 
+#[cfg(feature = "py")]
 pub fn target(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<InstructionProperties>()?;
     m.add_class::<Target>()?;

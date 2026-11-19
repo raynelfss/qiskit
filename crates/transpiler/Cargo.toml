@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 rayon.workspace = true
 rayon-cond = "0.4.0"
-numpy.workspace = true
+numpy = {workspace = true, optional = true}
 foldhash.workspace = true
 itertools.workspace = true
 nalgebra.workspace = true
@@ -23,10 +23,10 @@ rand.workspace = true
 rand_pcg.workspace = true
 num-complex.workspace = true
 rustworkx-core.workspace = true
-qiskit-circuit = { workspace = true, features = ["py"] }
+qiskit-circuit = { workspace = true }
 qiskit-synthesis.workspace = true
 qiskit-quantum-info.workspace = true
-qiskit-util = { workspace = true, features = ["py"] }
+qiskit-util = { workspace = true }
 thiserror.workspace = true
 bytemuck.workspace = true
 fixedbitset.workspace = true
@@ -43,6 +43,7 @@ features = ["union"]
 
 [dependencies.pyo3]
 workspace = true
+optional = true
 features = ["hashbrown", "indexmap", "num-complex", "num-bigint", "smallvec"]
 
 [dependencies.ndarray]
@@ -65,4 +66,11 @@ features = ["rayon"]
 cache_pygates = [
     "qiskit-circuit/cache_pygates",
     "qiskit-synthesis/cache_pygates",
+    "py"
+]
+py = [
+    "qiskit-circuit/py",
+    "dep:pyo3",
+    "dep:numpy",
+    "qiskit-util/py"
 ]

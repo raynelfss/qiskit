@@ -52,6 +52,7 @@ pub enum TargetError {
     InvalidBounds { low: f64, high: f64 },
 }
 
+#[cfg(feature = "py")]
 impl From<TargetError> for ::pyo3::PyErr {
     fn from(val: TargetError) -> Self {
         crate::TranspilerError::new_err(val.to_string())

@@ -95,7 +95,7 @@ impl MirInstruction {
         // Verify all Qids exist in the ResourceTable
         for &q in self.qids().inner().iter() {
             if resource_table.info(q).is_none() {
-                return Err(InstructionVerificationError::QidNotFound { qid: q })?;
+                Err(InstructionVerificationError::QidNotFound { qid: q })?;
             }
         }
 

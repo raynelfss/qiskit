@@ -10,16 +10,20 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 
 use rustworkx_core::petgraph::prelude::*;
 
-use crate::angle_bound_registry::{PyWrapAngleRegistry, WrapAngleRegistry};
+#[cfg(feature = "py")]
+use crate::angle_bound_registry::PyWrapAngleRegistry;
+use crate::angle_bound_registry::WrapAngleRegistry;
 use crate::target::Target;
 use qiskit_circuit::PhysicalQubit;
-use qiskit_circuit::dag_circuit::{DAGCircuit, PyDAGCircuit};
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, PyDAGCircuit};
 use qiskit_circuit::operations::{Operation, Param};
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "wrap_angles")]
 pub fn py_run_wrap_angles(
@@ -30,11 +34,16 @@ pub fn py_run_wrap_angles(
     run_wrap_angles(dag.try_write()?, target, bounds_registry.get_inner())
 }
 
+#[cfg(not(feature = "py"))]
+type WrapAnglesResult<T> = Result<T, DAGError>;
+#[cfg(feature = "py")]
+type WrapAnglesResult<T> = PyResult<T>;
+
 pub fn run_wrap_angles(
     dag: &mut DAGCircuit,
     target: &Target,
     bounds_registry: &WrapAngleRegistry,
-) -> PyResult<()> {
+) -> WrapAngleResult<()> {
     if !target.has_angle_bounds() {
         return Ok(());
     }
@@ -66,8 +75,12 @@ pub fn run_wrap_angles(
                 .iter()
                 .map(|x| PhysicalQubit(x.0))
                 .collect();
+            #[cfg(feature = "py")]
             let new_dag =
                 bounds_registry.substitute_angle_bounds(inst.op.name(), &params, &qargs)?;
+            #[cfg(not(feature = "py"))]
+            let Ok(new_dag) =
+                bounds_registry.substitute_angle_bounds(inst.op.name(), &params, &qargs);
             if let Some(new_dag) = new_dag {
                 dag.substitute_node_with_dag(node, &new_dag, None, None, None, None)?;
             }
@@ -76,6 +89,7 @@ pub fn run_wrap_angles(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn wrap_angles_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_wrap_angles))?;
     Ok(())

@@ -13,10 +13,11 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 use qiskit_circuit::Qubit;
 use qiskit_circuit::bit::QuantumRegister;
-use qiskit_circuit::circuit_data::CircuitData;
+use qiskit_circuit::circuit_data::{CircuitData, CircuitDataError};
 use qiskit_circuit::operations::{Operation, Param, StandardGate};
 use qiskit_circuit::parameter::parameter_expression::ParameterExpression;
 use qiskit_circuit::parameter::symbol_expr::Symbol;
@@ -35,7 +36,7 @@ use crate::equivalence::{EquivalenceError, EquivalenceLibrary};
 /// // Returns
 ///
 /// * The decomposed circuit for CNOT gate (up to global phase).
-fn cnot_rxx_decompose(plus_ry: bool, plus_rxx: bool) -> PyResult<CircuitData> {
+fn cnot_rxx_decompose(plus_ry: bool, plus_rxx: bool) -> Result<CircuitData, CircuitDataError> {
     let sgn_ry: f64 = match plus_ry {
         true => 1.0,
         false => -1.0,

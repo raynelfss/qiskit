@@ -10,13 +10,16 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::wrap_pyfunction;
 
 use qiskit_circuit::dag_circuit::{DAGCircuit, PyDAGCircuit};
 use qiskit_circuit::packed_instruction::PackedInstruction;
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "filter_op_nodes")]
 pub fn py_filter_op_nodes(
@@ -47,6 +50,7 @@ pub fn py_filter_op_nodes(
 /// Args:
 ///     dag (DAGCircuit): The dag circuit to filter the ops from
 ///     label (str): The label to filter nodes on
+#[cfg(feature = "py")]
 #[pyfunction(name = "filter_labeled_op")]
 fn py_filter_labeled_op(dag: &mut PyDAGCircuit, label: String) -> PyResult<()> {
     filter_labeled_op(dag.try_write()?, label);
@@ -68,6 +72,7 @@ pub fn filter_labeled_op(dag: &mut DAGCircuit, label: String) {
     dag.filter_op_nodes(predicate);
 }
 
+#[cfg(feature = "py")]
 pub fn filter_op_nodes_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_filter_op_nodes))?;
     m.add_wrapped(wrap_pyfunction!(py_filter_labeled_op))?;

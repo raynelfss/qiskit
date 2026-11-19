@@ -12,8 +12,11 @@
 
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
+#[cfg(feature = "py")]
 use pyo3::exceptions::PyRuntimeError;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::{Bound, PyResult, pyfunction, wrap_pyfunction};
 
 use qiskit_circuit::packed_instruction::PackedOperation;
@@ -25,8 +28,11 @@ use crate::commutation_checker::{CommutationChecker, CommutationError};
 use crate::passes::common::{MINIMUM_TOL, is_angle_close_to_multiple_of_pi_k};
 
 use qiskit_circuit::Qubit;
-use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, NodeType, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, NodeType};
 use qiskit_circuit::operations::{Operation, Param, StandardGate};
+#[cfg(feature = "py")]
 use qiskit_synthesis::QiskitError;
 
 /// Possible errors during the `CommutationCancellation` pass
@@ -42,6 +48,7 @@ pub enum CommutationCancelError {
     Analysis(#[from] CommutationError),
 }
 
+#[cfg(feature = "py")]
 impl From<CommutationCancelError> for PyErr {
     fn from(value: CommutationCancelError) -> Self {
         match value {
@@ -106,6 +113,7 @@ struct CancellationSetKey {
     second_index: Option<usize>,
 }
 
+#[cfg(feature = "py")]
 #[pyfunction(name = "cancel_commutations")]
 #[pyo3(signature = (dag, commutation_checker, basis_gates=None, approximation_degree=1.))]
 fn py_cancel_commutations(
@@ -375,6 +383,7 @@ pub fn cancel_commutations(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn commutation_cancellation_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_cancel_commutations))?;
     Ok(())

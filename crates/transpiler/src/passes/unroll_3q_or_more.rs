@@ -10,11 +10,14 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::wrap_pyfunction;
 use qiskit_circuit::dag_circuit::DAGError;
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
 
+#[cfg(feature = "py")]
 use crate::QiskitError;
 use crate::target::Target;
 use qiskit_circuit::dag_circuit::{DAGCircuit, PyDAGCircuit};
@@ -29,6 +32,7 @@ pub enum Unroll3qError {
     SubstitutionError(#[from] DAGError),
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "unroll_3q_or_more")]
 pub fn py_unroll_3q_or_more(dag: &mut PyDAGCircuit, target: Option<&Target>) -> PyResult<()> {
@@ -82,6 +86,7 @@ pub fn run_unroll_3q_or_more(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn unroll_3q_or_more_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_unroll_3q_or_more))?;
     Ok(())

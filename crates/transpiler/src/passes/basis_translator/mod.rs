@@ -18,6 +18,7 @@ use basis_search::basis_search;
 use compose_transforms::compose_transforms;
 use errors::BasisTranslatorError;
 use hashbrown::{HashMap, HashSet};
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 use qiskit_util::{IndexMap, IndexSet};
 use rustworkx_core::petgraph::algo::toposort;
@@ -53,6 +54,7 @@ type InstMap = AhashIndexMap<GateIdentifier, BasisTransformOut>;
 type ExtraInstructionMap<'a> = AhashIndexMap<&'a PhysicalQargs, InstMap>;
 type PhysicalQargs = SmallVec<[PhysicalQubit; 2]>;
 
+#[cfg(feature = "py")]
 #[pyfunction(name = "base_run", signature = (dag, equiv_lib, min_qubits, target=None, target_basis=None))]
 fn py_run_basis_translator(
     dag: &PyDAGCircuit,
@@ -495,6 +497,7 @@ fn replace_node(
                 .map(|clbit| old_cargs[clbit.0 as usize])
                 .collect();
             let new_op: PackedOperation = match inner_node.op.view() {
+                #[cfg(feature = "py")]
                 OperationRef::PyCustom(inst) => Python::attach(|py| inst.py_copy(py))
                     .map_err(BasisTranslatorError::PyGateError)?
                     .into(),
@@ -555,6 +558,7 @@ fn replace_node(
                 .collect();
             let new_op: PackedOperation = match inner_node.op.view() {
                 OperationRef::ControlFlow(cf) => cf.clone().into(),
+                #[cfg(feature = "py")]
                 OperationRef::PyCustom(inst) => Python::attach(|py| inst.py_copy(py))
                     .map_err(BasisTranslatorError::PyGateError)?
                     .into(),
@@ -586,6 +590,7 @@ fn replace_node(
                         _ => Ok(param.clone()),
                     })
                     .collect::<Result<_, BasisTranslatorError>>()?;
+                #[cfg(feature = "py")]
                 if let OperationRef::PyCustom(inst) = new_op.view() {
                     // TODO: Remove this.
                     // Acquire the gil if the operation is not native to set the operation parameters in
@@ -637,6 +642,7 @@ fn param_expr_assignment(
             Param::Float(val) => {
                 bind_map.insert(key, Value::Real(*val));
             }
+            #[cfg(feature = "py")]
             Param::Obj(val) => {
                 let val = Python::attach(|py| val.extract::<Value>(py))
                     .map_err(|_| ParameterError::InvalidValue)?;
@@ -672,6 +678,7 @@ fn param_assignment_expr(
     }
 }
 
+#[cfg(feature = "py")]
 pub fn basis_translator_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_basis_translator))?;
     Ok(())

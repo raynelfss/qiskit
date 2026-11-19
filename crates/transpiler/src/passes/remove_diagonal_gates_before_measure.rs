@@ -12,6 +12,7 @@
 
 /// Remove diagonal gates (including diagonal 2Q gates) before a measurement.
 use hashbrown::HashSet;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
 use qiskit_circuit::operations::Operation;
@@ -23,6 +24,7 @@ use rustworkx_core::petgraph::stable_graph::NodeIndex;
 ///     dag (DAGCircuit): the DAG to be optimized.
 /// Returns:
 ///     DAGCircuit: the optimized DAG.
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "remove_diagonal_gates_before_measure")]
 pub fn py_run_remove_diagonal_before_measure(dag: &mut PyDAGCircuit) -> PyResult<()> {
@@ -101,6 +103,7 @@ pub fn run_remove_diagonal_before_measure(dag: &mut DAGCircuit) {
     }
 }
 
+#[cfg(feature = "py")]
 pub fn remove_diagonal_gates_before_measure_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_remove_diagonal_before_measure))?;
     Ok(())

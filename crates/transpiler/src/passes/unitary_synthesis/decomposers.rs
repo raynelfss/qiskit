@@ -28,10 +28,15 @@ use num_complex::Complex64;
 use qiskit_util::{IndexMap, IndexSet};
 use smallvec::{SmallVec, smallvec};
 
+#[cfg(feature = "py")]
 use numpy::convert::ToPyArray;
+#[cfg(feature = "py")]
 use pyo3::exceptions::{PyTypeError, PyValueError};
+#[cfg(feature = "py")]
 use pyo3::intern;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::types::{IntoPyDict, PyDict};
 
 use super::{
@@ -285,6 +290,7 @@ impl Decomposer2qConstructor {
 #[derive(Clone, Debug)]
 pub enum Decomposer2q {
     ContinuousPauli(TwoQubitControlledUDecomposer),
+    #[cfg(feature = "py")]
     DiscretePauli {
         decomposer: Py<PyAny>,
         kwargs: Py<PyDict>,
@@ -298,6 +304,7 @@ impl Decomposer2q {
     pub fn decompose(&self, matrix: ArrayView2<Complex64>) -> PyResult<TwoQubitGateSequence> {
         match self {
             Self::ContinuousPauli(decomposer) => decomposer.call_inner(matrix, None),
+            #[cfg(feature = "py")]
             Self::DiscretePauli { decomposer, kwargs } => Python::attach(|py| {
                 let circuit = decomposer
                     .bind(py)
@@ -648,6 +655,7 @@ fn get_2q_decomposers(
                     OperationRef::StandardGate(standard @ super::PARAM_SET!()) => {
                         RXXEquivalent::Standard(standard)
                     }
+                    #[cfg(feature = "py")]
                     OperationRef::PyCustom(PyInstruction {
                         kind: PyOpKind::Gate,
                         ob,
@@ -663,6 +671,7 @@ fn get_2q_decomposers(
                 for euler in euler_bases.get_bases() {
                     let rxx_copy = match rxx_equivalent {
                         RXXEquivalent::Standard(gate) => RXXEquivalent::Standard(gate),
+                        #[cfg(feature = "py")]
                         RXXEquivalent::CustomPython(ref gate) => {
                             RXXEquivalent::CustomPython(Python::attach(|py| gate.clone_ref(py)))
                         }
@@ -727,19 +736,20 @@ fn get_2q_decomposers(
             }
 
             // TODO: port XXDecomposer to Rust, so this catch can be removed.
+            #[cfg(feature = "py")]
             if config.run_python_decomposers {
                 Python::attach(|py| {
                     get_xx_decomposers(py, cache, &euler_bases, &candidates_2q, config)
                 })
                 .map(|maybe| maybe.into_iter().collect())
                 .map_err(UnitarySynthesisError::XXDecomposer)
-            } else {
-                Ok(Default::default())
             }
+            Ok(Default::default())
         }
     }
 }
 
+#[cfg(feature = "py")]
 fn get_xx_decomposers(
     py: Python,
     cache: &mut Decomposer2qCacheInner,
@@ -1009,12 +1019,9 @@ fn rxx_equivalent_strength(op: &NormalOperation) -> Option<f64> {
 
 /// Helper for the Python-space `XXDecomposer` to convert its output format into the native one used
 /// by the rest of unitary synthesis.
-fn circuit_to_2q_sequence(circuit: &CircuitData) -> PyResult<TwoQubitGateSequence> {
+fn circuit_to_2q_sequence(circuit: &CircuitData) -> Option<TwoQubitGateSequence> {
     assert!(circuit.num_qubits() <= 2);
-    let global_phase = circuit
-        .global_phase()
-        .try_float()
-        .ok_or_else(|| PyTypeError::new_err("unexpected global phase"))?;
+    let global_phase = circuit.global_phase().try_float()?;
     let gates = circuit
         .data()
         .iter()
@@ -1023,8 +1030,7 @@ fn circuit_to_2q_sequence(circuit: &CircuitData) -> PyResult<TwoQubitGateSequenc
                 .params_view()
                 .iter()
                 .map(|p| p.try_float())
-                .collect::<Option<_>>()
-                .ok_or_else(|| PyTypeError::new_err("unexpected parameter"))?;
+                .collect::<Option<_>>()?;
             let qubits = circuit
                 .get_qargs(inst.qubits)
                 .iter()
@@ -1032,6 +1038,6 @@ fn circuit_to_2q_sequence(circuit: &CircuitData) -> PyResult<TwoQubitGateSequenc
                 .collect();
             Ok((inst.op.clone(), params, qubits))
         })
-        .collect::<PyResult<_>>()?;
-    Ok(TwoQubitGateSequence::from_sequence(gates, global_phase))
+        .collect::<Option<_>>()?;
+    Some(TwoQubitGateSequence::from_sequence(gates, global_phase))
 }

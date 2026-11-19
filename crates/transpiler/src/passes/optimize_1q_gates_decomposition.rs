@@ -11,21 +11,28 @@
 // that they have been altered from the originals.
 
 use std::cmp::Ordering;
+#[cfg(feature = "py")]
 use std::str::FromStr;
 use std::sync::OnceLock;
 
 use hashbrown::HashSet;
 use num_complex::Complex64;
 
+#[cfg(feature = "py")]
 use pyo3::exceptions::PyValueError;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::wrap_pyfunction;
 
 use ndarray::prelude::*;
+use qiskit_circuit::dag_circuit::DAGError;
 use rayon::prelude::*;
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
 
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
 use qiskit_circuit::operations::{Operation, OperationRef, Param};
 use qiskit_util::getenv_use_multiple_threads;
 
@@ -88,6 +95,7 @@ enum BasisGatesPerQubit {
     Gates(HashSet<String>),
 }
 
+#[cfg(feature = "py")]
 impl<'a, 'py> FromPyObject<'a, 'py> for BasisGatesPerQubit {
     type Error = PyErr;
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
@@ -109,6 +117,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for BasisGatesPerQubit {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'py> IntoPyObject<'py> for BasisGatesPerQubit {
     type Target = PyAny;
     type Output = Bound<'py, PyAny>;
@@ -122,7 +131,10 @@ impl<'py> IntoPyObject<'py> for BasisGatesPerQubit {
     }
 }
 
-#[pyclass(module = "qiskit._accelerate.optimize_1q_gates_decomposition")]
+#[cfg_attr(
+    feature = "py",
+    pyclass(module = "qiskit._accelerate.optimize_1q_gates_decomposition")
+)]
 pub struct Optimize1qGatesDecompositionState {
     target_basis_per_qubit: Vec<OnceLock<EulerBasisSet>>,
     basis_gates_per_qubit: Vec<OnceLock<BasisGatesPerQubit>>,
@@ -135,6 +147,7 @@ type Optimize1qGatesDecompositionStatePickle = (
     bool,
 );
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl Optimize1qGatesDecompositionState {
     fn __getstate__(&self) -> Optimize1qGatesDecompositionStatePickle {
@@ -379,7 +392,7 @@ fn process_run(
     target: Option<&Target>,
     basis_gates: Option<&HashSet<String>>,
     global_decomposers: Option<&Vec<String>>,
-) -> PyResult<Option<OneQubitGateSequence>> {
+) -> Result<Option<OneQubitGateSequence>, DAGError> {
     let mut error = match target {
         Some(_) => 1.,
         None => raw_run.len() as f64,
@@ -465,6 +478,7 @@ fn process_run(
     }
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "optimize_1q_gates_decomposition", signature = (dag, state, *, target=None, basis_gates=None, global_decomposers=None))]
 pub fn py_run_optimize_1q_gates_decomposition(
@@ -512,7 +526,7 @@ fn parallel_analyze_runs(
     target: Option<&Target>,
     basis_gates: Option<HashSet<String>>,
     global_decomposers: Option<Vec<String>>,
-) -> PyResult<AnalysisResults> {
+) -> Result<AnalysisResults, DAGError> {
     let runs: Vec<Vec<NodeIndex>> = dag.collect_1q_runs().unwrap().collect();
     let sequences = runs
         .par_iter()
@@ -526,7 +540,7 @@ fn parallel_analyze_runs(
                 global_decomposers.as_ref(),
             )
         })
-        .collect::<PyResult<Vec<_>>>()?;
+        .collect::<Result<Vec<_>, DAGError>>()?;
     Ok(AnalysisResults { runs, sequences })
 }
 
@@ -534,11 +548,11 @@ fn apply_sequences(
     dag: &mut DAGCircuit,
     runs: Vec<Vec<NodeIndex>>,
     sequences: Vec<Option<OneQubitGateSequence>>,
-) -> PyResult<()> {
+) -> Result<(), DAGError> {
     runs.into_iter()
         .zip(sequences)
         .filter_map(|(raw_run, sequence)| sequence.map(|x| (raw_run, x)))
-        .try_for_each(|(raw_run, sequence)| -> PyResult<()> {
+        .try_for_each(|(raw_run, sequence)| -> Result<(), DAGError> {
             for gate in sequence.gates {
                 dag.insert_1q_on_incoming_qubit((gate.0, &gate.1), raw_run[0]);
             }
@@ -554,7 +568,7 @@ pub fn run_optimize_1q_gates_decomposition(
     target: Option<&Target>,
     basis_gates: Option<HashSet<String>>,
     global_decomposers: Option<Vec<String>>,
-) -> PyResult<()> {
+) -> Result<(), DAGError> {
     if getenv_use_multiple_threads() {
         let results = parallel_analyze_runs(dag, state, target, basis_gates, global_decomposers)?;
         apply_sequences(dag, results.runs, results.sequences)?;
@@ -610,6 +624,7 @@ pub fn matmul_1q_with_slice(operator: &mut [[Complex64; 2]; 2], other: &[[Comple
     ];
 }
 
+#[cfg(feature = "py")]
 pub fn optimize_1q_gates_decomposition_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_optimize_1q_gates_decomposition))?;
     m.add_class::<Optimize1qGatesDecompositionState>()?;

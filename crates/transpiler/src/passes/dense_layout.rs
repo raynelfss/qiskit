@@ -13,13 +13,18 @@
 
 use hashbrown::{HashMap, HashSet};
 use ndarray::prelude::*;
+#[cfg(feature = "py")]
 use numpy::IntoPyArray;
+#[cfg(feature = "py")]
 use numpy::PyReadonlyArray2;
 use qiskit_util::IndexSet;
 use rayon::prelude::*;
 
+#[cfg(feature = "py")]
 use pyo3::Python;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::wrap_pyfunction;
 
 use qiskit_util::getenv_use_multiple_threads;
@@ -97,6 +102,7 @@ fn bfs_sort(adj_matrix: ArrayView2<f64>, start: usize, num_qubits: usize) -> Vec
 ///     mapping found by the function. This can be used to efficiently create
 ///     a sparse matrix that maps the layout of virtual qubits
 ///     (0 to ``num_qubits``) to the physical qubits on the coupling graph.
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "best_subset")]
 pub fn py_best_subset(
@@ -248,6 +254,7 @@ pub fn best_subset(
     [rows, cols, best_map]
 }
 
+#[cfg(feature = "py")]
 pub fn dense_layout_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_best_subset))?;
     Ok(())

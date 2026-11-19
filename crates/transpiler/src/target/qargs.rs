@@ -11,6 +11,7 @@
 // that they have been altered from the originals.
 
 use indexmap::Equivalent;
+#[cfg(feature = "py")]
 use pyo3::{IntoPyObject, prelude::*, types::PyTuple};
 use smallvec::SmallVec;
 
@@ -72,6 +73,7 @@ impl Qargs {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'py> IntoPyObject<'py> for Qargs {
     type Target = PyAny;
 
@@ -84,6 +86,7 @@ impl<'py> IntoPyObject<'py> for Qargs {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'py> IntoPyObject<'py> for &Qargs {
     type Target = PyAny;
 
@@ -99,6 +102,7 @@ impl<'py> IntoPyObject<'py> for &Qargs {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'a, 'py> FromPyObject<'a, 'py> for Qargs {
     type Error = <TargetQargs as FromPyObject<'a, 'py>>::Error;
 
@@ -160,6 +164,7 @@ impl<'a> From<&'a [PhysicalQubit]> for QargsRef<'a> {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'py> IntoPyObject<'py> for QargsRef<'_> {
     type Target = PyAny;
 

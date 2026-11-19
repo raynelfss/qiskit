@@ -13,8 +13,11 @@
 mod error_map;
 mod vf2_layout;
 
-pub use error_map::{ErrorMap, error_map_mod};
+pub use error_map::ErrorMap;
+#[cfg(feature = "py")]
+pub use error_map::error_map_mod;
+#[cfg(feature = "py")]
+pub use vf2_layout::vf2_layout_mod;
 pub use vf2_layout::{
-    Vf2PassConfiguration, Vf2PassReturn, vf2_layout_mod, vf2_layout_pass_average,
-    vf2_layout_pass_exact,
+    Vf2PassConfiguration, Vf2PassReturn, vf2_layout_pass_average, vf2_layout_pass_exact,
 };

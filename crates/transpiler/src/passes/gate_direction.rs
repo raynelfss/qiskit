@@ -10,9 +10,11 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use crate::TranspilerError;
 use crate::target::{Target, TargetError};
 use hashbrown::HashSet;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 use qiskit_circuit::bit::{QuantumRegister, Register};
 use qiskit_circuit::dag_circuit::DAGError;
@@ -61,6 +63,7 @@ pub enum GateDirectionError {
     Target(#[from] TargetError),
 }
 
+#[cfg(feature = "py")]
 impl From<GateDirectionError> for PyErr {
     fn from(value: GateDirectionError) -> Self {
         use GateDirectionError::*;
@@ -85,6 +88,7 @@ impl From<GateDirectionError> for PyErr {
 ///
 /// Returns:
 ///     true iff all two-qubit gates comply with the coupling constraints
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "check_gate_direction_coupling")]
 fn py_check_direction_coupling_map(
@@ -116,6 +120,7 @@ pub fn check_direction_coupling_map(
 ///
 /// Returns:
 ///     true iff all two-qubit gates comply with the target's coupling constraints
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "check_gate_direction_target")]
 fn py_check_direction_target(dag: &PyDAGCircuit, target: &Target) -> PyResult<bool> {
@@ -219,6 +224,7 @@ where
 ///
 /// Returns:
 ///     the transformed DAGCircuit
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "fix_gate_direction_coupling")]
 fn py_fix_direction_coupling_map(
@@ -261,6 +267,7 @@ pub fn fix_direction_coupling_map(
 ///
 /// Returns:
 ///     the transformed DAGCircuit
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "fix_gate_direction_target")]
 fn py_fix_direction_target(dag: &mut PyDAGCircuit, target: &Target) -> PyResult<()> {
@@ -590,6 +597,7 @@ fn rzx_replacement_dag(param: &[Param]) -> Result<DAGCircuit, DAGError> {
     Ok(new_dag)
 }
 
+#[cfg(feature = "py")]
 pub fn gate_direction_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_check_direction_coupling_map))?;
     m.add_wrapped(wrap_pyfunction!(py_check_direction_target))?;

@@ -15,31 +15,42 @@ use ndarray::Array2;
 use ndarray::linalg::kron;
 use num_complex::Complex64;
 use num_complex::ComplexFloat;
+#[cfg(feature = "py")]
 use qiskit_circuit::object_registry::PyObjectAsKey;
 use qiskit_circuit::standard_gate::standard_generators::standard_gate_exponent;
-use qiskit_quantum_info::sparse_observable::{PySparseObservable, SparseObservable};
+#[cfg(feature = "py")]
+use qiskit_quantum_info::sparse_observable::PySparseObservable;
+use qiskit_quantum_info::sparse_observable::SparseObservable;
 use smallvec::SmallVec;
 use std::fmt::Debug;
 
+#[cfg(feature = "py")]
 use numpy::PyReadonlyArray2;
-use pyo3::BoundObject;
-use pyo3::exceptions::PyRuntimeError;
-use pyo3::intern;
-use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyTuple};
+#[cfg(feature = "py")]
+use pyo3::{
+    BoundObject,
+    exceptions::PyRuntimeError,
+    intern,
+    prelude::*,
+    types::{PyBool, PyDict, PyTuple},
+};
 
 use qiskit_circuit::circuit_instruction::OperationFromPython;
 use qiskit_circuit::dag_node::DAGOpNode;
+#[cfg(feature = "py")]
 use qiskit_circuit::imports::QI_OPERATOR;
 use qiskit_circuit::instruction::{Instruction, Parameters};
 use qiskit_circuit::object_registry::ObjectRegistry;
+#[cfg(feature = "py")]
+use qiskit_circuit::operations::PyOpKind;
 use qiskit_circuit::operations::{
-    Operation, OperationRef, Param, PyOpKind, STANDARD_GATE_SIZE, StandardGate,
+    Operation, OperationRef, Param, STANDARD_GATE_SIZE, StandardGate,
 };
 use qiskit_circuit::{Clbit, Qubit};
 use qiskit_quantum_info::unitary_compose;
 use thiserror::Error;
 
+#[cfg(feature = "py")]
 use crate::QiskitError;
 use crate::gate_metrics;
 use crate::standard_gates_commutations;
@@ -58,6 +69,7 @@ pub enum CommutationError {
     DuplicateQubits(&'static str),
 }
 
+#[cfg(feature = "py")]
 impl From<CommutationError> for PyErr {
     fn from(value: CommutationError) -> Self {
         match value {
@@ -138,6 +150,7 @@ static SUPPORTED_ROTATIONS: [Option<Option<StandardGate>>; STANDARD_GATE_SIZE] =
 ///
 /// Behavior is undefined if ``qubits`` contains a qubit index larger equal to ``num_qubits``,
 /// or if the number of Paulis in ``pauli_gate`` does not match the number of indices in ``qubits``.
+#[cfg(feature = "py")]
 fn try_extract_op_from_pauli_gate(
     pauli_gate: &OperationRef,
     qubits: &[Qubit],
@@ -166,6 +179,7 @@ fn try_extract_op_from_pauli_gate(
     })
 }
 
+#[cfg(feature = "py")]
 fn try_extract_op_from_pauli_evo(
     operation: &OperationRef,
     qubits: &[Qubit],
@@ -249,7 +263,9 @@ fn try_sparse_observable_generator_for_pauli_based(
     num_qubits: u32,
 ) -> Option<SparseObservable> {
     match operation.name() {
+        #[cfg(feature = "py")]
         "pauli" => try_extract_op_from_pauli_gate(operation, qubits, num_qubits),
+        #[cfg(feature = "py")]
         "PauliEvolution" => try_extract_op_from_pauli_evo(operation, qubits, num_qubits),
         "pauli_product_measurement" => try_extract_op_from_ppm(operation, qubits, num_qubits),
         "pauli_product_rotation" => try_extract_op_from_ppr(operation, qubits, num_qubits),
@@ -295,6 +311,7 @@ where
     Ok(())
 }
 
+#[cfg(feature = "py")]
 fn get_bits_from_py<T>(
     py_bits1: &Bound<'_, PyTuple>,
     py_bits2: &Bound<'_, PyTuple>,
@@ -325,13 +342,17 @@ where
 /// It handles the actual commutation checking, and library lookups. It's
 /// not meant to be a public facing Python object though and only used
 /// internally by the Python class.
-#[pyclass(module = "qiskit._accelerate.commutation_checker")]
+#[cfg_attr(
+    feature = "py",
+    pyclass(module = "qiskit._accelerate.commutation_checker")
+)]
 pub struct CommutationChecker {
     library: CommutationLibrary,
-    #[pyo3(get)]
+    #[cfg_attr(feature = "py", pyo3(get))]
     gates: Option<HashSet<String>>,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl CommutationChecker {
     #[pyo3(signature = (standard_gate_commutations=None, gates=None))]
@@ -787,6 +808,7 @@ fn commutation_precheck(
 
     if [op1, op2].iter().any(|op| match op {
         OperationRef::StandardInstruction(_) => true,
+        #[cfg(feature = "py")]
         OperationRef::PyCustom(inst) => inst.kind == PyOpKind::Instruction,
         _ => false,
     }) {
@@ -817,6 +839,7 @@ pub fn try_matrix_with_definition(
         OperationRef::StandardGate(gate) => gate.matrix(params),
         OperationRef::PauliProductRotation(ppr) => ppr.matrix(),
         OperationRef::Unitary(unitary) => unitary.matrix(),
+        #[cfg(feature = "py")]
         OperationRef::PyCustom(inst) => Python::attach(|py| -> Option<_> {
             if let Some(matrix) = inst.matrix() {
                 return Some(matrix);
@@ -910,7 +933,7 @@ fn get_relative_placement(
 }
 
 #[derive(Clone, Debug)]
-#[pyclass]
+#[cfg_attr(feature = "py", pyclass)]
 pub struct CommutationLibrary {
     pub library: Option<HashMap<(String, String), CommutationLibraryEntry>>,
 }
@@ -952,6 +975,7 @@ impl CommutationLibrary {
     }
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl CommutationLibrary {
     #[new]
@@ -976,6 +1000,7 @@ pub enum CommutationLibraryEntry {
     QubitMapping(HashMap<SmallVec<[Option<Qubit>; 2]>, bool>),
 }
 
+#[cfg(feature = "py")]
 impl<'py> IntoPyObject<'py> for CommutationLibraryEntry {
     type Target = PyAny;
     type Output = Bound<'py, Self::Target>;
@@ -998,6 +1023,7 @@ impl<'py> IntoPyObject<'py> for CommutationLibraryEntry {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'a, 'py> FromPyObject<'a, 'py> for CommutationLibraryEntry {
     type Error = PyErr;
 
@@ -1017,7 +1043,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for CommutationLibraryEntry {
     }
 }
 
-#[pyfunction]
+#[cfg_attr(feature = "py", pyfunction)]
 pub fn get_standard_commutation_checker() -> CommutationChecker {
     let library = standard_gates_commutations::get_commutation_library();
     CommutationChecker {
@@ -1026,6 +1052,7 @@ pub fn get_standard_commutation_checker() -> CommutationChecker {
     }
 }
 
+#[cfg(feature = "py")]
 pub fn commutation_checker(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<CommutationLibrary>()?;
     m.add_class::<CommutationChecker>()?;

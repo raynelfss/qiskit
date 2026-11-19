@@ -10,21 +10,29 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::{prelude::*, pyclass};
 /**
     A representation of a ``QubitProperties`` object.
 */
-#[pyclass(subclass, module = "qiskit._accelerate.target", from_py_object)]
+#[cfg_attr(
+    feature = "py",
+    pyclass(
+        subclass,
+        module = "qiskit._accelerate.target",
+        from_py_object,
+        get_all,
+        set_all
+    )
+)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct QubitProperties {
-    #[pyo3(get, set)]
     pub t1: Option<f64>,
-    #[pyo3(get, set)]
     pub t2: Option<f64>,
-    #[pyo3(get, set)]
     pub frequency: Option<f64>,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl QubitProperties {
     /// Create a new ``QubitProperties`` object

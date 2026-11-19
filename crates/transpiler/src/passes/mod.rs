@@ -38,6 +38,7 @@ mod elide_permutations;
 mod filter_op_nodes;
 mod gate_direction;
 mod gates_in_basis;
+#[cfg(feature = "py")]
 mod high_level_synthesis;
 mod instruction_duration_check;
 mod inverse_cancellation;
@@ -50,6 +51,7 @@ pub mod sabre;
 mod schedule_analysis;
 mod split_2q_unitaries;
 mod substitute_pi4_rotations;
+#[cfg(feature = "py")]
 mod synthesize_rz_rotations;
 mod two_qubit_peephole;
 pub mod unitary_synthesis;
@@ -78,6 +80,7 @@ pub use gate_direction::{
     fix_direction_target, gate_direction_mod,
 };
 pub use gates_in_basis::{gates_in_basis_mod, gates_missing_from_basis, gates_missing_from_target};
+#[cfg(feature = "py")]
 pub use high_level_synthesis::{
     HighLevelSynthesisData, high_level_synthesis_mod, run_high_level_synthesis,
 };

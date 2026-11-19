@@ -10,10 +10,11 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use crate::TranspilerError;
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
+#[cfg(feature = "py")]
+use pyo3::{exceptions::PyValueError, prelude::*, wrap_pyfunction};
+#[cfg(feature = "py")]
 use qiskit_circuit::dag_circuit::PyDAGCircuit;
 use qiskit_circuit::operations::Param;
 use qiskit_circuit::operations::{DelayUnit, OperationRef, StandardInstruction};

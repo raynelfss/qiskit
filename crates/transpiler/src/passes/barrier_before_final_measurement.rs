@@ -11,6 +11,7 @@
 // that they have been altered from the originals.
 
 use hashbrown::HashSet;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use rustworkx_core::petgraph::algo::toposort;
@@ -18,12 +19,15 @@ use rustworkx_core::petgraph::stable_graph::NodeIndex;
 use rustworkx_core::petgraph::visit::NodeFiltered;
 
 use qiskit_circuit::Qubit;
-use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, NodeType, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, NodeType};
 use qiskit_circuit::operations::{OperationRef, StandardInstruction};
 use qiskit_circuit::packed_instruction::{PackedInstruction, PackedOperation};
 
 const PARALLEL_THRESHOLD: usize = 150;
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "barrier_before_final_measurements", signature=(dag, label=None))]
 pub fn py_run_barrier_before_final_measurements(
@@ -163,6 +167,7 @@ pub fn run_barrier_before_final_measurements(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn barrier_before_final_measurements_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_barrier_before_final_measurements))?;
     Ok(())

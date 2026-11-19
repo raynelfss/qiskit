@@ -10,8 +10,11 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::wrap_pyfunction;
+use qiskit_circuit::dag_circuit::DAGError;
 use std::f64::consts::PI;
 
 use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
@@ -334,6 +337,7 @@ fn optimize_clifford_t_1q(
         .then_some((optimized_sequence, global_phase))
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "optimize_clifford_t", signature = (dag, basis_gates=None))]
 pub fn py_run_optimize_clifford_t(
@@ -346,7 +350,7 @@ pub fn py_run_optimize_clifford_t(
 pub fn run_optimize_clifford_t(
     dag: &mut DAGCircuit,
     basis_gates: Option<Vec<StandardGate>>,
-) -> PyResult<()> {
+) -> Result<(), DAGError> {
     let filter = |inst: &PackedInstruction| -> bool {
         matches!(
             inst.op.view(),
@@ -387,6 +391,7 @@ pub fn run_optimize_clifford_t(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn optimize_clifford_t_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_optimize_clifford_t))?;
     Ok(())

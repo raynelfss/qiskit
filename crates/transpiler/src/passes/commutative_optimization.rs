@@ -15,7 +15,9 @@ use itertools::Itertools;
 use std::f64::consts::PI;
 
 use num_complex::Complex64;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::{Bound, PyResult, pyfunction, wrap_pyfunction};
 use qiskit_circuit::instruction::Parameters;
 use smallvec::smallvec;
@@ -23,14 +25,16 @@ use smallvec::smallvec;
 use crate::commutation_checker::{CommutationChecker, try_matrix_with_definition};
 use crate::passes::common::{MINIMUM_TOL, average_gate_fidelity_below_tol};
 use crate::passes::remove_identity_equiv::is_identity_equiv;
+#[cfg(feature = "py")]
 use qiskit_circuit::circuit_instruction::OperationFromPython;
-use qiskit_circuit::dag_circuit::{DAGCircuit, PyDAGCircuit};
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, PyDAGCircuit};
 use qiskit_circuit::operations::{
     Operation, OperationRef, Param, PauliBased, PauliProductMeasurement, PauliProductRotation,
     StandardGate, multiply_param, radd_param,
 };
 use qiskit_circuit::{BlocksMode, Clbit, NoBlocks, Qubit, imports};
 
+#[cfg(feature = "py")]
 use qiskit_circuit::VarsMode;
 use qiskit_circuit::packed_instruction::PackedInstruction;
 
@@ -50,8 +54,13 @@ enum NodeAction {
     Replace(PackedInstruction),
 }
 
+#[cfg(feature = "py")]
+type CommutationResult<T> = PyResult<T>;
+#[cfg(not(feature = "py"))]
+type CommutationResult<T> = Result<T, DAGError>;
+
 /// Returns true if the two parameter lists are equal.
-fn compare_params(params1: &[Param], params2: &[Param]) -> PyResult<bool> {
+fn compare_params(params1: &[Param], params2: &[Param]) -> CommutationResult<bool> {
     if params1.len() != params2.len() {
         return Ok(false);
     }
@@ -371,7 +380,7 @@ fn commute(
     approximation_degree: f64,
     matrix_max_num_qubits: u32,
     commutation_checker: &mut CommutationChecker,
-) -> PyResult<bool> {
+) -> Result<bool, DAGError> {
     let qargs1 = dag.get_qargs(inst1.qubits);
     let qargs2 = dag.get_qargs(inst2.qubits);
     let cargs1 = dag.get_cargs(inst1.clbits);
@@ -429,7 +438,7 @@ fn try_merge(
     inst2: &PackedInstruction,
     tol: f64,
     matrix_max_num_qubits: u32,
-) -> PyResult<(bool, Option<PackedInstruction>, f64)> {
+) -> Result<(bool, Option<PackedInstruction>, f64), DAGError> {
     if inst1.op.num_qubits() != inst2.op.num_qubits() {
         return Ok((false, None, 0.));
     }
@@ -507,6 +516,7 @@ fn try_merge(
     }
 
     // Special handling for PauliEvolutionGates.
+    #[cfg(feature = "py")]
     if inst1.op.name() == "PauliEvolution"
         && inst2.op.name() == "PauliEvolution"
         && let (OperationRef::PyCustom(py_gate1), OperationRef::PyCustom(py_gate2)) =
@@ -592,6 +602,7 @@ fn disjoint_instructions(
     !qargs1.iter().any(|e| qargs2.contains(e)) && !cargs1.iter().any(|e| cargs2.contains(e))
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "commutative_optimization")]
 #[pyo3(signature = (py_dag, commutation_checker, approximation_degree=1., matrix_max_num_qubits=0))]
@@ -738,6 +749,7 @@ pub fn run_commutative_optimization(
     )))
 }
 
+#[cfg(feature = "py")]
 pub fn commutative_optimization_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(run_commutative_optimization))?;
     Ok(())

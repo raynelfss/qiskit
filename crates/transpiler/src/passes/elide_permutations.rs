@@ -10,10 +10,12 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use numpy::PyReadonlyArray1;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, NodeType, PyDAGCircuit};
 use qiskit_circuit::operations::{Operation, OperationRef, Param, StandardGate};
 use qiskit_circuit::{BlocksMode, Qubit, VarsMode};
 
@@ -25,6 +27,7 @@ use qiskit_circuit::{BlocksMode, Qubit, VarsMode};
 ///     An `Option`: the value of `None` indicates that no optimization was
 ///     performed and the original `dag` should be used, otherwise it's a
 ///     tuple consisting of the optimized DAG and the induced qubit permutation.
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "run")]
 pub fn py_run_elide_permutations(
@@ -41,6 +44,11 @@ pub fn py_run_elide_permutations(
     )
 }
 
+#[cfg(not(feature = "py"))]
+type ElidePermutationsResult<T> = Result<T, DAGError>;
+#[cfg(feature = "py")]
+type ElidePermutationsResult<T> = PyResult<T>;
+
 /// Run the ElidePermutations pass on `dag`.
 ///
 /// Args:
@@ -49,7 +57,9 @@ pub fn py_run_elide_permutations(
 ///     An `Option`: the value of `None` indicates that no optimization was
 ///     performed and the original `dag` should be used, otherwise it's a
 ///     tuple consisting of the optimized DAG and the induced qubit permutation.
-pub fn run_elide_permutations(dag: &DAGCircuit) -> PyResult<Option<(DAGCircuit, Vec<usize>)>> {
+pub fn run_elide_permutations(
+    dag: &DAGCircuit,
+) -> ElidePermutationsResult<Option<(DAGCircuit, Vec<usize>)>> {
     let permutation_gate_names = ["swap".to_string(), "permutation".to_string()];
     let op_counts = dag.get_op_counts();
     if !permutation_gate_names
@@ -71,6 +81,7 @@ pub fn run_elide_permutations(dag: &DAGCircuit) -> PyResult<Option<(DAGCircuit, 
                     let index1 = qargs[1].index();
                     mapping.swap(index0, index1);
                 }
+                #[cfg(feature = "py")]
                 OperationRef::PyCustom(
                     gate @ qiskit_circuit::operations::PyInstruction {
                         kind: qiskit_circuit::operations::PyOpKind::Gate,
@@ -129,6 +140,7 @@ pub fn run_elide_permutations(dag: &DAGCircuit) -> PyResult<Option<(DAGCircuit, 
     Ok(Some((new_dag, mapping)))
 }
 
+#[cfg(feature = "py")]
 pub fn elide_permutations_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_elide_permutations))?;
     Ok(())

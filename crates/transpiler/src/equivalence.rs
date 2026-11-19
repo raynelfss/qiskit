@@ -13,11 +13,13 @@
 use hashbrown::HashSet;
 use itertools::Itertools;
 
+#[cfg(feature = "py")]
 use pyo3::exceptions::PyTypeError;
 use qiskit_circuit::parameter::symbol_expr::Symbol;
 use qiskit_circuit::parameter_table::ParameterUuid;
 use rustworkx_core::petgraph::csr::IndexType;
 use rustworkx_core::petgraph::stable_graph::StableDiGraph;
+#[cfg(feature = "py")]
 use rustworkx_core::petgraph::visit::IntoEdgeReferences;
 
 use smallvec::{SmallVec, smallvec};
@@ -25,9 +27,12 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::{error::Error, fmt::Display};
 
+#[cfg(feature = "py")]
 use exceptions::CircuitError;
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::types::{PyDict, PyList, PyString};
 use qiskit_util::{IndexMap, IndexSet};
 
@@ -37,8 +42,10 @@ use rustworkx_core::petgraph::{
 };
 
 use qiskit_circuit::NoBlocks;
-use qiskit_circuit::circuit_data::{CircuitData, PyCircuitData};
+use qiskit_circuit::circuit_data::{CircuitData, CircuitDataError, PyCircuitData};
+#[cfg(feature = "py")]
 use qiskit_circuit::circuit_instruction::OperationFromPython;
+#[cfg(feature = "py")]
 use qiskit_circuit::imports::QUANTUM_CIRCUIT;
 use qiskit_circuit::instruction::Parameters;
 use qiskit_circuit::operations::Param;
@@ -48,28 +55,33 @@ use qiskit_util::py::ImportOnceCell;
 
 use crate::standard_equivalence_library::generate_standard_equivalence_library;
 
+#[cfg(feature = "py")]
 mod exceptions {
     use pyo3::import_exception;
     import_exception! {qiskit.circuit.exceptions, CircuitError}
 }
+#[cfg(feature = "py")]
 pub static PYDIGRAPH: ImportOnceCell = ImportOnceCell::new("rustworkx", "PyDiGraph");
 
 // Custom Structs
 
-#[pyclass(
-    frozen,
-    sequence,
-    module = "qiskit._accelerate.equivalence",
-    from_py_object
+#[cfg_attr(
+    feature = "py",
+    pyclass(
+        frozen,
+        sequence,
+        module = "qiskit._accelerate.equivalence",
+        from_py_object,
+        get_all
+    )
 )]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Key {
-    #[pyo3(get)]
     pub name: String,
-    #[pyo3(get)]
     pub num_qubits: u32,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl Key {
     #[new]
@@ -132,19 +144,23 @@ impl Display for Key {
     }
 }
 
-#[pyclass(
-    frozen,
-    sequence,
-    module = "qiskit._accelerate.equivalence",
-    from_py_object
+#[cfg_attr(
+    feature = "py",
+    pyclass(
+        frozen,
+        sequence,
+        module = "qiskit._accelerate.equivalence",
+        from_py_object
+    )
 )]
 #[derive(Debug, Clone)]
 pub struct Equivalence {
-    #[pyo3(get)]
+    #[cfg_attr(feature = "py", pyo3(get))]
     pub params: SmallVec<[Param; 3]>,
     pub circuit: CircuitData,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl Equivalence {
     #[new]
@@ -193,20 +209,23 @@ impl Display for Equivalence {
     }
 }
 
-#[pyclass(
-    frozen,
-    sequence,
-    module = "qiskit._accelerate.equivalence",
-    from_py_object
+#[cfg_attr(
+    feature = "py",
+    pyclass(
+        frozen,
+        sequence,
+        module = "qiskit._accelerate.equivalence",
+        from_py_object,
+        get_all
+    )
 )]
 #[derive(Debug, Clone)]
 pub struct NodeData {
-    #[pyo3(get)]
     pub key: Key,
-    #[pyo3(get)]
     pub equivs: Vec<Equivalence>,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl NodeData {
     #[new]
@@ -242,24 +261,25 @@ impl Display for NodeData {
     }
 }
 
-#[pyclass(
-    frozen,
-    sequence,
-    module = "qiskit._accelerate.equivalence",
-    from_py_object
+#[cfg_attr(
+    feature = "py",
+    pyclass(
+        frozen,
+        sequence,
+        module = "qiskit._accelerate.equivalence",
+        from_py_object,
+        get_all,
+    )
 )]
 #[derive(Debug, Clone)]
 pub struct EdgeData {
-    #[pyo3(get)]
     pub index: usize,
-    #[pyo3(get)]
     pub num_gates: usize,
-    #[pyo3(get)]
     pub rule: Equivalence,
-    #[pyo3(get)]
     pub source: Key,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl EdgeData {
     #[new]
@@ -315,6 +335,7 @@ pub struct GateOper {
     params: SmallVec<[Param; 3]>,
 }
 
+#[cfg(feature = "py")]
 impl<'a, 'py> FromPyObject<'a, 'py> for GateOper {
     type Error = PyErr;
 
@@ -341,8 +362,10 @@ impl<'a, 'py> FromPyObject<'a, 'py> for GateOper {
 ///
 /// [`QuantumCircuit`]: https://quantum.cloud.ibm.com/docs/api/qiskit/qiskit.circuit.QuantumCircuit
 #[derive(Debug, Clone)]
+#[cfg(feature = "py")]
 pub struct CircuitFromPython(pub CircuitData);
 
+#[cfg(feature = "py")]
 impl<'py> IntoPyObject<'py> for CircuitFromPython {
     type Target = PyAny;
     type Output = Bound<'py, Self::Target>;
@@ -353,6 +376,7 @@ impl<'py> IntoPyObject<'py> for CircuitFromPython {
     }
 }
 
+#[cfg(feature = "py")]
 impl<'a, 'py> FromPyObject<'a, 'py> for CircuitFromPython {
     type Error = PyErr;
 
@@ -374,19 +398,24 @@ type KTIType = IndexMap<Key, NodeIndex>;
 
 /// A library providing a one-way mapping of gates to their equivalent
 /// implementations as :class:`.QuantumCircuit` instances.
-#[pyclass(
-    subclass,
-    name = "BaseEquivalenceLibrary",
-    module = "qiskit._accelerate.equivalence"
+#[cfg_attr(
+    feature = "py",
+    pyclass(
+        subclass,
+        name = "BaseEquivalenceLibrary",
+        module = "qiskit._accelerate.equivalence"
+    )
 )]
 #[derive(Debug, Clone)]
 pub struct EquivalenceLibrary {
     graph: GraphType,
     key_to_node_index: KTIType,
     rule_id: usize,
+    #[cfg(feature = "py")]
     _graph: Option<Py<PyAny>>,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl EquivalenceLibrary {
     /// Create a new equivalence library.
@@ -789,9 +818,12 @@ fn raise_if_shape_mismatch(
     Ok(())
 }
 
-fn rebind_equiv(equiv: Equivalence, query_params: &[Param]) -> PyResult<CircuitData> {
+fn rebind_equiv(
+    equiv: Equivalence,
+    query_params: &[Param],
+) -> Result<CircuitData, CircuitDataError> {
     let (equiv_params, mut equiv_circuit) = (equiv.params, equiv.circuit);
-    let param_mapping: PyResult<IndexMap<ParameterUuid, &Param>> = equiv_params
+    let param_mapping: Result<IndexMap<ParameterUuid, &Param>> = equiv_params
         .iter()
         .zip(query_params.iter())
         .filter_map(|(param_x, param_y)| match param_x {
@@ -799,7 +831,7 @@ fn rebind_equiv(equiv: Equivalence, query_params: &[Param]) -> PyResult<CircuitD
                 // we know this expression represents a symbol
                 let symbol = match param.try_to_symbol() {
                     Ok(symbol) => symbol,
-                    Err(e) => return Some(Err(PyErr::from(e))),
+                    Err(e) => return Some(Err(e.into())),
                 };
                 let uuid = ParameterUuid::from_symbol(&symbol);
                 Some(Ok((uuid, param_y)))
@@ -834,6 +866,7 @@ impl Display for EquivalenceError {
 
 // Conversion helpers
 
+#[cfg(feature = "py")]
 fn to_pygraph<'py, N, E>(
     py: Python<'py>,
     pet_graph: &'py StableDiGraph<N, E>,
@@ -859,12 +892,14 @@ where
     Ok(graph.unbind())
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "get_standard_equivalence_library")]
 fn py_get_standard_equivalence_library() -> EquivalenceLibrary {
     generate_standard_equivalence_library()
 }
 
+#[cfg(feature = "py")]
 pub fn equivalence(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<EquivalenceLibrary>()?;
     m.add_class::<NodeData>()?;

@@ -10,25 +10,30 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::{prelude::*, pyclass};
 
 /**
  A representation of an ``InstructionProperties`` object.
 */
-#[pyclass(
-    subclass,
-    name = "BaseInstructionProperties",
-    module = "qiskit._accelerate.target",
-    from_py_object
+#[cfg_attr(
+    feature = "py",
+    pyclass(
+        subclass,
+        name = "BaseInstructionProperties",
+        module = "qiskit._accelerate.target",
+        from_py_object,
+        get_all,
+        set_all,
+    )
 )]
 #[derive(Clone, Debug, PartialEq)]
 pub struct InstructionProperties {
-    #[pyo3(get, set)]
     pub duration: Option<f64>,
-    #[pyo3(get, set)]
     pub error: Option<f64>,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl InstructionProperties {
     /// Create a new ``BaseInstructionProperties`` object

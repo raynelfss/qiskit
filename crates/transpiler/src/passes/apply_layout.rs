@@ -10,8 +10,11 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::exceptions::PyValueError;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::wrap_pyfunction;
 
 use hashbrown::HashSet;
@@ -145,6 +148,7 @@ fn unique_ancilla_register_name(qregs: &[QuantumRegister]) -> String {
 ///     num_physical_qubits: the number of physical qubits in the target we're compiling for.
 ///     physical_from_virtual: the layout to apply.
 ///     permutation: the current output permutation of the circuit.
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "apply_layout")]
 fn py_apply_layout<'py>(
@@ -225,6 +229,7 @@ fn py_apply_layout<'py>(
     cur_layout.to_py_native(py, dag_mut.qubits().objects())
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "update_layout")]
 fn py_update_layout<'py>(
@@ -261,6 +266,7 @@ fn py_update_layout<'py>(
     cur_layout.to_py_native(py_layout.py(), dag_mut.qubits().objects())
 }
 
+#[cfg(feature = "py")]
 pub fn apply_layout_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_apply_layout))?;
     m.add_wrapped(wrap_pyfunction!(py_update_layout))?;

@@ -10,8 +10,11 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::IntoPyObjectExt;
+#[cfg(feature = "py")]
 use pyo3::exceptions::PyIndexError;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 
 use qiskit_circuit::PhysicalQubit;
@@ -34,12 +37,16 @@ use hashbrown::HashMap;
 /// error rates, you should assign both elements of the key to the same
 /// qubit index. If an edge or qubit is ideal and has no error rate, you can
 /// either set it to ``0.0`` explicitly or as ``NaN``.
-#[pyclass(mapping, module = "qiskit._accelerate.error_map")]
+#[cfg_attr(
+    feature = "py",
+    pyclass(mapping, module = "qiskit._accelerate.error_map")
+)]
 #[derive(Clone, Debug)]
 pub struct ErrorMap {
     pub error_map: HashMap<[PhysicalQubit; 2], f64>,
 }
 
+#[cfg(feature = "py")]
 #[pymethods]
 impl ErrorMap {
     #[new]
@@ -118,6 +125,7 @@ impl ErrorMap {
     }
 }
 
+#[cfg(feature = "py")]
 pub fn error_map_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<ErrorMap>()?;
     Ok(())

@@ -10,19 +10,33 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(not(feature = "py"))]
+use std::convert::Infallible;
+
 use hashbrown::HashSet;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
 use qiskit_util::IndexMap;
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
 
 use qiskit_circuit::NoBlocks;
 use qiskit_circuit::circuit_instruction::OperationFromPython;
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError, NodeType};
 use qiskit_circuit::instruction::Instruction;
 use qiskit_circuit::operations::{Operation, OperationRef, StandardGate};
 use qiskit_circuit::packed_instruction::PackedInstruction;
 
-fn gate_eq(gate_a: &PackedInstruction, gate_b: &OperationFromPython<NoBlocks>) -> PyResult<bool> {
+#[cfg(feature = "py")]
+type ParamResult<T> = PyResult<T>;
+#[cfg(not(feature = "py"))]
+type ParamResult<T> = Result<T, Infallible>;
+
+fn gate_eq(
+    gate_a: &PackedInstruction,
+    gate_b: &OperationFromPython<NoBlocks>,
+) -> ParamResult<bool> {
     if gate_a.op.name() != gate_b.operation.name() {
         return Ok(false);
     }
@@ -46,7 +60,7 @@ fn run_on_self_inverse(
     op_counts: &IndexMap<String, usize>,
     self_inverse_gate_names: HashSet<String>,
     self_inverse_gates: Vec<OperationFromPython<NoBlocks>>,
-) -> PyResult<()> {
+) -> Result<(), DAGError> {
     if !self_inverse_gate_names
         .iter()
         .any(|name| op_counts.contains_key(name))
@@ -110,7 +124,7 @@ fn run_on_inverse_pairs(
     op_counts: &IndexMap<String, usize>,
     inverse_gate_names: HashSet<String>,
     inverse_gates: Vec<[OperationFromPython<NoBlocks>; 2]>,
-) -> PyResult<()> {
+) -> Result<(), DAGError> {
     if !inverse_gate_names
         .iter()
         .any(|name| op_counts.contains_key(name))
@@ -314,6 +328,7 @@ fn std_inverse_pairs(dag: &mut DAGCircuit) {
     }
 }
 
+#[cfg(feature = "py")]
 #[pyfunction(name = "run_inverse_cancellation_standard_gates")]
 pub fn py_run_inverse_cancellation_standard_gates(dag: &mut PyDAGCircuit) -> PyResult<()> {
     run_inverse_cancellation_standard_gates(dag.try_write()?);
@@ -325,6 +340,7 @@ pub fn run_inverse_cancellation_standard_gates(dag: &mut DAGCircuit) {
     std_inverse_pairs(dag);
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "inverse_cancellation")]
 pub fn py_run_inverse_cancellation(
@@ -353,6 +369,7 @@ pub fn py_run_inverse_cancellation(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn inverse_cancellation_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_inverse_cancellation))?;
     m.add_wrapped(wrap_pyfunction!(py_run_inverse_cancellation_standard_gates))?;

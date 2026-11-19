@@ -10,6 +10,7 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use pyo3::PyErr;
 use qiskit_circuit::{
     circuit_data::CircuitDataError, dag_circuit::DAGError,
@@ -17,6 +18,7 @@ use qiskit_circuit::{
 };
 use thiserror::Error;
 
+#[cfg(feature = "py")]
 use crate::TranspilerError;
 
 /// A collection of the Errors possible in the [run_basis_translator] function
@@ -61,9 +63,11 @@ pub enum BasisTranslatorError {
     #[error(transparent)]
     DAGCircuit(#[from] DAGError),
     #[error(transparent)]
+    #[cfg(feature = "py")]
     PyGateError(PyErr),
 }
 
+#[cfg(feature = "py")]
 impl From<BasisTranslatorError> for PyErr {
     fn from(value: BasisTranslatorError) -> Self {
         match value {

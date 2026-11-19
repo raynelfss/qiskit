@@ -10,8 +10,8 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
+#[cfg(feature = "py")]
+use pyo3::{prelude::*, wrap_pyfunction};
 use qiskit_circuit::bit::ShareableQubit;
 use qiskit_circuit::dag_circuit::DAGError;
 use qiskit_circuit::dag_circuit::NodeIndex;
@@ -20,7 +20,9 @@ use qiskit_circuit::packed_instruction::PackedOperation;
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, FRAC_PI_8, PI};
 
 use crate::passes::common::{MINIMUM_TOL, is_angle_close_to_multiple_of_pi_k};
-use qiskit_circuit::dag_circuit::{DAGCircuit, PyDAGCircuit};
+use qiskit_circuit::dag_circuit::DAGCircuit;
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
 use qiskit_circuit::operations::{OperationRef, Param, StandardGate};
 use qiskit_circuit::packed_instruction::PackedInstruction;
 
@@ -1043,6 +1045,7 @@ fn rotation_to_pi_div(gate: StandardGate) -> usize {
     }
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "substitute_pi4_rotations")]
 fn py_run_substitute_pi4_rotations(
@@ -1142,6 +1145,7 @@ pub fn run_substitute_pi4_rotations(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn substitute_pi4_rotations_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_substitute_pi4_rotations))?;
     Ok(())

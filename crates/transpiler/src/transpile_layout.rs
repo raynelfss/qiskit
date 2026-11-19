@@ -18,10 +18,15 @@ use qiskit_circuit::bit::ShareableQubit;
 use qiskit_circuit::nlayout::{NLayout, PhysicalQubit, VirtualQubit};
 
 // TODO: Conditionally compile these imports for Python builds
+#[cfg(feature = "py")]
 use pyo3::intern;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::types::{PyDict, PySet};
+#[cfg(feature = "py")]
 use qiskit_circuit::imports::LAYOUT;
+#[cfg(feature = "py")]
 use qiskit_circuit::imports::TRANSPILE_LAYOUT;
 
 /// The "layout" caused by transpilation
@@ -480,6 +485,7 @@ impl TranspileLayout {
     ///
     /// - `py`: Python token for gil access
     /// - `output_qubits`: A slice of the qubit objects from the output circuit's qubits
+    #[cfg(feature = "py")]
     pub fn to_py_native<'py>(
         &self,
         py: Python<'py>,
@@ -525,6 +531,7 @@ impl TranspileLayout {
     /// # Args
     ///
     /// - `py_layout`: A Python `TranspileLayout` object
+    #[cfg(feature = "py")]
     pub fn from_py_native(py_layout: &Bound<PyAny>) -> PyResult<Self> {
         let py = py_layout.py();
         let initial_index_layout: Option<Vec<PhysicalQubit>> = py_layout

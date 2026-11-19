@@ -10,18 +10,24 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
+#[cfg(feature = "py")]
 use crate::TranspilerError;
 use crate::passes::schedule_analysis::{NodeDurations, PyNodeDurations};
 use crate::target::Target;
 use ::hashbrown::HashSet;
+#[cfg(feature = "py")]
 use pyo3::exceptions::PyValueError;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::{Bound, PyResult, pyfunction, wrap_pyfunction};
 use qiskit_circuit::PhysicalQubit;
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
-use qiskit_circuit::operations::{
-    Operation, OperationRef, Param, PyInstruction, PyOpKind, StandardInstruction,
-};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
+use qiskit_circuit::operations::{Operation, OperationRef, Param, StandardInstruction};
+#[cfg(feature = "py")]
+use qiskit_circuit::operations::{PyInstruction, PyOpKind};
 use qiskit_util::IndexMap;
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
 
@@ -68,15 +74,16 @@ fn push_node_back(
     pulse_align: u32,
     acquire_align: u32,
     target: Option<&Target>,
-) -> PyResult<()> {
+) -> Result<()> {
     let NodeType::Operation(op) = &dag[node_index] else {
         unreachable!("topological_op_nodes() should only return operations.")
     };
 
     let op_view = op.op.view();
     let alignment = match op_view {
-        OperationRef::StandardGate(_)
-        | OperationRef::PyCustom(PyInstruction {
+        OperationRef::StandardGate(_) => Some(pulse_align),
+        #[cfg(feature = "py")]
+        OperationRef::PyCustom(PyInstruction {
             kind: PyOpKind::Gate,
             ..
         }) => Some(pulse_align),
@@ -240,6 +247,7 @@ fn push_node_back(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name="constrained_reschedule", signature=(dag, node_start_time, clbit_write_latency, acquire_align, pulse_align, target))]
 pub fn py_run_constrained_reschedule(
@@ -301,6 +309,7 @@ pub fn run_constrained_reschedule(
     Ok(())
 }
 
+#[cfg(feature = "py")]
 pub fn constrained_reschedule_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_run_constrained_reschedule))?;
     Ok(())

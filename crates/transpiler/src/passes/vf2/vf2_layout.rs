@@ -22,10 +22,14 @@ use rayon::prelude::*;
 use rustworkx_core::petgraph::data::Create;
 use rustworkx_core::petgraph::prelude::*;
 
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::{IntoPyObjectExt, create_exception, wrap_pyfunction};
 
-use qiskit_circuit::dag_circuit::{DAGCircuit, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGError};
 use qiskit_circuit::interner::{Interned, Interner};
 use qiskit_circuit::operations::{ControlFlowView, Operation};
 use qiskit_circuit::packed_instruction::PackedInstruction;
@@ -34,9 +38,10 @@ use qiskit_circuit::{PhysicalQubit, VirtualQubit, vf2};
 use super::error_map::ErrorMap;
 use crate::target::{Qargs, QargsRef, Target, TargetOperation};
 
+#[cfg(feature = "py")]
 create_exception!(qiskit, MultiQEncountered, pyo3::exceptions::PyException);
 
-#[pyclass(name = "VF2PassConfiguration")]
+#[cfg_attr(feature = "py", pyclass(name = "VF2PassConfiguration"))]
 #[derive(Clone, Debug)]
 pub struct Vf2PassConfiguration {
     /// The maximum numbers of times VF2 is allowed to extend the mapping (before, after) the first
@@ -97,6 +102,8 @@ impl Vf2PassConfiguration {
         }
     }
 }
+
+#[cfg(feature = "py")]
 #[pymethods]
 impl Vf2PassConfiguration {
     #[new]
@@ -174,6 +181,7 @@ pub enum Vf2PassReturn {
     /// A solution was found (other than `NoImprovement`, if relevant).
     Solution(HashMap<VirtualQubit, PhysicalQubit>),
 }
+#[cfg(feature = "py")]
 impl<'py> IntoPyObject<'py> for Vf2PassReturn {
     type Target = VF2PassReturn;
     type Output = <Self::Target as IntoPyObject<'py>>::Output;
@@ -184,8 +192,9 @@ impl<'py> IntoPyObject<'py> for Vf2PassReturn {
     }
 }
 
-#[pyclass]
+#[cfg_attr(feature = "py", pyclass)]
 pub struct VF2PassReturn(Vf2PassReturn);
+#[cfg(feature = "py")]
 #[pymethods]
 impl VF2PassReturn {
     /// True iff there exists a valid solution.  If ``True``, ``new_mapping`` can still be ``None``
@@ -328,7 +337,7 @@ impl<T: Default> VirtualInteractions<T> {
     ///
     /// The weighter should return `true` on success, or `false` if no weight could be created
     /// (indicating a necessary failure of the layout pass).
-    fn try_from_dag<W>(dag: &DAGCircuit, weighter: W) -> PyResult<Option<Self>>
+    fn try_from_dag<W>(dag: &DAGCircuit, weighter: W) -> Result<Option<Self>, DAGError>
     where
         W: Fn(&mut T, &PackedInstruction, usize) -> bool,
     {
@@ -349,7 +358,7 @@ impl<T: Default> VirtualInteractions<T> {
 
     /// Create a set of virtual interactions from a DAG, and a weighter function for a single
     /// interaction.
-    fn from_dag<W>(dag: &DAGCircuit, weighter: W) -> PyResult<Self>
+    fn from_dag<W>(dag: &DAGCircuit, weighter: W) -> Result<Self, DAGError>
     where
         W: Fn(&mut T, &PackedInstruction, usize),
     {
@@ -367,7 +376,7 @@ impl<T: Default> VirtualInteractions<T> {
         wire_map: &[VirtualQubit],
         repeats: usize,
         weighter: &W,
-    ) -> PyResult<bool>
+    ) -> Option<bool>
     where
         W: Fn(&mut T, &PackedInstruction, usize) -> bool,
     {
@@ -382,7 +391,7 @@ impl<T: Default> VirtualInteractions<T> {
                 let wire_map: Vec<_> = qubits.iter().map(|i| wire_map[i.index()]).collect();
                 for block in control_flow.blocks() {
                     if !self.add_interactions_from(block, &wire_map, repeats, weighter)? {
-                        return Ok(false);
+                        return Some(false);
                     }
                 }
                 continue;
@@ -397,7 +406,7 @@ impl<T: Default> VirtualInteractions<T> {
                             .node_weight_mut(NodeIndex::new(index))
                             .expect("node must be in graph if tracked in 'nodes'");
                         if !weighter(weight, inst, repeats) {
-                            return Ok(false);
+                            return Some(false);
                         };
                     } else {
                         let weight = self.uncoupled.entry(q).or_default();
@@ -415,20 +424,20 @@ impl<T: Default> VirtualInteractions<T> {
                             .edge_weight_mut(edge)
                             .expect("this index came from a call to 'find_edge'");
                         if !weighter(weight, inst, repeats) {
-                            return Ok(false);
+                            return Some(false);
                         };
                     } else {
                         let mut weight = T::default();
                         if !weighter(&mut weight, inst, repeats) {
-                            return Ok(false);
+                            return Some(false);
                         };
                         self.graph.add_edge(node0, node1, weight);
                     }
                 }
-                _ => return Err(MultiQEncountered::new_err("")),
+                _ => return None,
             }
         }
-        Ok(true)
+        Some(true)
     }
 
     fn ensure_1q_in_graph(&mut self, q: VirtualQubit) -> NodeIndex {
@@ -746,6 +755,7 @@ where
     Some(score)
 }
 
+#[cfg(feature = "py")]
 #[pyfunction(name = "vf2_layout_pass_average")]
 #[pyo3(signature = (dag, target, config, *, strict_direction=false, avg_error_map=None))]
 pub fn py_vf2_layout_pass_average(
@@ -770,7 +780,7 @@ pub fn vf2_layout_pass_average(
     config: &Vf2PassConfiguration,
     strict_direction: bool,
     avg_error_map: Option<&ErrorMap>,
-) -> PyResult<Vf2PassReturn> {
+) -> Result<Vf2PassReturn, DAGError> {
     let add_interaction = |count: &mut usize, _: &PackedInstruction, repeats: usize| {
         *count += repeats;
     };
@@ -830,6 +840,7 @@ pub fn vf2_layout_pass_average(
     }
 }
 
+#[cfg(feature = "py")]
 #[pyfunction(name = "vf2_layout_pass_exact")]
 #[pyo3(signature = (dag, target, config))]
 pub fn py_vf2_layout_pass_exact(
@@ -844,7 +855,7 @@ pub fn vf2_layout_pass_exact(
     dag: &DAGCircuit,
     target: &Target,
     config: &Vf2PassConfiguration,
-) -> PyResult<Vf2PassReturn> {
+) -> Result<Vf2PassReturn, DAGError> {
     let Some((mut coupling_graph, interner)) = build_exact_coupling_map(target) else {
         return Ok(Vf2PassReturn::NoSolution);
     };
@@ -932,6 +943,7 @@ pub fn vf2_layout_pass_exact(
     Ok(Vf2PassReturn::Solution(mapping))
 }
 
+#[cfg(feature = "py")]
 pub fn vf2_layout_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_vf2_layout_pass_average))?;
     m.add_wrapped(wrap_pyfunction!(py_vf2_layout_pass_exact))?;

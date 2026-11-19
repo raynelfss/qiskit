@@ -24,23 +24,31 @@ use std::cell::RefCell;
 use std::hash;
 use thread_local::ThreadLocal;
 
+#[cfg(feature = "py")]
 use numpy::PyReadonlyArray2;
+#[cfg(feature = "py")]
 use pyo3::exceptions::PyValueError;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+#[cfg(feature = "py")]
 use pyo3::{intern, wrap_pyfunction};
 
 pub(crate) use self::decomposers::Direction2q;
 
 use self::decomposers::{Decomposer2q, DecomposerCache, FlipDirection};
+#[cfg(feature = "py")]
 use crate::QiskitError;
 use crate::target::Target;
+#[cfg(feature = "py")]
 use qiskit_circuit::bit::QuantumRegister;
 use qiskit_circuit::circuit_data::CircuitData;
-use qiskit_circuit::dag_circuit::{
-    DAGCircuit, DAGCircuitBuilder, DAGError, NodeType, PyDAGCircuit,
-};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, DAGCircuitBuilder, DAGError, NodeType};
 use qiskit_circuit::instruction::Parameters;
-use qiskit_circuit::operations::{Operation, OperationRef, Param, PythonOperation, StandardGate};
+#[cfg(feature = "py")]
+use qiskit_circuit::operations::PythonOperation;
+use qiskit_circuit::operations::{Operation, OperationRef, Param, StandardGate};
 use qiskit_circuit::packed_instruction::{PackedInstruction, PackedOperation};
 use qiskit_circuit::{BlocksMode, PhysicalQubit, Qubit, VarsMode};
 use qiskit_synthesis::euler_one_qubit_decomposer::{
@@ -67,15 +75,19 @@ pub enum UnitarySynthesisError {
     #[error(transparent)]
     DAGCircuit(#[from] DAGError),
     // TODO: Remove once XXDecomposer is in Rust.
+    #[cfg(feature = "py")]
     #[error(transparent)]
     XXDecomposer(PyErr),
     // TODO: Replace with Rust native versions of errors for Decomposer2q
+    #[cfg(feature = "py")]
     #[error(transparent)]
     Decomposer2q(PyErr),
+    #[cfg(feature = "py")]
     #[error(transparent)]
     PyGate(PyErr),
 }
 
+#[cfg(feature = "py")]
 impl From<UnitarySynthesisError> for PyErr {
     fn from(value: UnitarySynthesisError) -> Self {
         match value {
@@ -743,6 +755,7 @@ fn apply_matrix_result_onto(
                 };
                 let op = match gate.view() {
                     OperationRef::StandardGate(gate) => PackedOperation::from(gate),
+                    #[cfg(feature = "py")]
                     OperationRef::PyCustom(py_gate) => Python::attach(|py| -> PyResult<_> {
                         let gate = py_gate.py_copy(py)?;
                         gate.ob.setattr(py, intern!(py, "params"), params)?;
@@ -1117,6 +1130,7 @@ fn synthesize_2q_matrix_onto(
         };
         let op = match gate.view() {
             OperationRef::StandardGate(gate) => PackedOperation::from(gate),
+            #[cfg(feature = "py")]
             OperationRef::PyCustom(inst) => Python::attach(|py| -> PyResult<_> {
                 let inst = inst.py_copy(py)?;
                 inst.ob.setattr(py, intern!(py, "params"), params)?;
@@ -1156,6 +1170,7 @@ fn conjugate_with_swaps(mut m: ArrayViewMut2<Complex64>) {
 }
 
 /// Python entry point to [run_unitary_synthesis].
+#[cfg(feature = "py")]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
 #[pyo3(name = "run_main_loop", signature=(py_dag, qubit_indices, min_qubits, target, basis_gates, synth_gates, coupling_edges, approximation_degree=None, natural_direction=None, pulse_optimize=None))]
@@ -1246,6 +1261,7 @@ pub fn py_unitary_synthesis(
     }
 }
 
+#[cfg(feature = "py")]
 #[allow(clippy::too_many_arguments)]
 #[pyfunction]
 #[pyo3(name = "synthesize_unitary_matrix", signature=(unitary, qubit_indices, target, basis_gates, coupling_edges, approximation_degree=None, natural_direction=None, pulse_optimize=None))]
@@ -1303,6 +1319,7 @@ pub fn py_synthesize_unitary_matrix(
     Ok(out_dag.build().into())
 }
 
+#[cfg(feature = "py")]
 pub fn unitary_synthesis_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_unitary_synthesis))?;
     m.add_wrapped(wrap_pyfunction!(py_synthesize_unitary_matrix))?;

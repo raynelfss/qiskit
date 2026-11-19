@@ -72,7 +72,7 @@ impl Enum {
                     bail!("API-exposed enums must have explicit discriminant values set");
                 };
                 let ir::Literal::Expr(discriminant) = &discriminant else {
-                    bail!("unhandled discriminant type: {:?}", &discriminant);
+                    bail!("unhandled discriminant type: {:?}", discriminant);
                 };
                 Ok(EnumVariant {
                     name: variant.name.clone(),

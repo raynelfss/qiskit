@@ -17,17 +17,25 @@ use std::sync::OnceLock;
 
 use nalgebra::U4;
 use num_complex::Complex64;
+#[cfg(feature = "py")]
 use pyo3::Python;
+#[cfg(feature = "py")]
 use pyo3::intern;
+#[cfg(feature = "py")]
 use pyo3::prelude::*;
+use qiskit_circuit::dag_circuit::DAGError;
 use rayon::prelude::*;
 use rustworkx_core::petgraph::algo::toposort;
 use rustworkx_core::petgraph::stable_graph::NodeIndex;
 use rustworkx_core::petgraph::visit::NodeIndexable;
 
-use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType, PyDAGCircuit};
+#[cfg(feature = "py")]
+use qiskit_circuit::dag_circuit::PyDAGCircuit;
+use qiskit_circuit::dag_circuit::{DAGCircuit, NodeType};
 use qiskit_circuit::instruction::Parameters;
-use qiskit_circuit::operations::{Operation, OperationRef, Param, PythonOperation};
+use qiskit_circuit::operations::{Operation, OperationRef, Param};
+#[cfg(feature = "py")]
+use qiskit_circuit::operations::{Operation, OperationRef, Param};
 use qiskit_circuit::packed_instruction::{PackedInstruction, PackedOperation};
 use qiskit_circuit::{BlocksMode, Qubit, VarsMode};
 
@@ -46,11 +54,17 @@ use thread_local::ThreadLocal;
 
 type MappingIterItem = Option<(TwoQSynthesisResult<f64>, [Qubit; 2])>;
 
+#[cfg(not(feature = "py"))]
+type TwoQUnitaryPeepResult<T> = Result<T, DAGError>;
+#[cfg(feature = "py")]
+type TwoQUnitaryPeepResult<T> = PyResult<T>;
+
 /// A python entry-point to the pass function
 ///
 /// This function explicitly releases the GIL prior to entering the parallel portion of the pass.
 /// This is necessary because if there are any Python defined and owned objects in the circuit
 /// the pass will need GIL access to interact with that object in parallel.
+#[cfg(feature = "py")]
 #[pyfunction(name = "two_qubit_unitary_peephole_optimize")]
 pub fn py_two_qubit_unitary_peephole_optimize(
     py: Python,
@@ -83,7 +97,7 @@ pub fn two_qubit_unitary_peephole_optimize(
     dag: &DAGCircuit,
     target: &Target,
     approximation_degree: Option<f64>,
-) -> PyResult<Option<DAGCircuit>> {
+) -> TwoQUnitaryPeepResult<Option<DAGCircuit>> {
     let result = two_qubit_unitary_peephole_optimize_analysis(dag, target, approximation_degree)?;
     let Some(result) = result else {
         return Ok(None);
@@ -118,7 +132,7 @@ fn two_qubit_unitary_peephole_optimize_analysis(
     dag: &DAGCircuit,
     target: &Target,
     approximation_degree: Option<f64>,
-) -> PyResult<Option<PeepholeResult>> {
+) -> TwoQUnitaryPeepResult<Option<PeepholeResult>> {
     let runs: Vec<Vec<NodeIndex>> = dag.collect_2q_runs().unwrap();
     if runs.is_empty() {
         return Ok(None);
@@ -136,7 +150,7 @@ fn two_qubit_unitary_peephole_optimize_analysis(
     let thread_local_states = ThreadLocal::new();
     let find_best_sequence = |run_index: usize,
                               node_indices: &[NodeIndex]|
-     -> PyResult<MappingIterItem> {
+     -> TwoQUnitaryPeepResult<MappingIterItem> {
         let q_virt = node_indices
             .iter()
             .find_map(|node_index| {
@@ -256,7 +270,8 @@ fn two_qubit_unitary_peephole_optimize_analysis(
         Ok(Some((result, q_virt)))
     };
 
-    let run_mapping: PyResult<Vec<MappingIterItem>> = if getenv_use_multiple_threads() {
+    let run_mapping: TwoQUnitaryPeepResult<Vec<MappingIterItem>> = if getenv_use_multiple_threads()
+    {
         // Build a vec of all the best synthesized two qubit gate sequences from the collected runs.
         // This is done in parallel
         runs.into_par_iter()
@@ -287,7 +302,7 @@ fn two_qubit_unitary_peephole_optimize_analysis(
 fn two_qubit_unitary_peephole_optimize_apply(
     dag: &DAGCircuit,
     result: PeepholeResult,
-) -> PyResult<Option<DAGCircuit>> {
+) -> TwoQUnitaryPeepResult<Option<DAGCircuit>> {
     // After we've computed all the sequences to execute now serially build up a new dag.
     let mut processed_runs: Vec<bool> = vec![false; result.run_mapping.len()];
     let out_dag = dag.copy_empty_like_with_same_capacity(VarsMode::Alike, BlocksMode::Keep);
@@ -338,6 +353,7 @@ fn two_qubit_unitary_peephole_optimize_apply(
                 };
                 let op = match gate.view() {
                     OperationRef::StandardGate(gate) => PackedOperation::from(gate),
+                    #[cfg(feature = "py")]
                     OperationRef::PyCustom(py_gate) => Python::attach(|py| -> PyResult<_> {
                         let gate = py_gate.py_copy(py)?;
                         gate.ob.setattr(py, intern!(py, "params"), params)?;
@@ -374,6 +390,7 @@ fn two_qubit_unitary_peephole_optimize_apply(
     Ok(Some(out_dag_builder.build()))
 }
 
+#[cfg(feature = "py")]
 pub fn two_qubit_peephole_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_two_qubit_unitary_peephole_optimize))?;
     Ok(())

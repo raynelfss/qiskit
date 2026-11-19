@@ -10,10 +10,14 @@
 // copyright notice, and modified files need to carry a notice indicating
 // that they have been altered from the originals.
 
-use pyo3::prelude::PyModule;
-use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
-use pyo3::{Bound, PyResult, Python, pyfunction, wrap_pyfunction};
+#[cfg(feature = "py")]
+use pyo3::{
+    Bound, PyResult, Python,
+    prelude::*,
+    pyfunction,
+    types::{PyDict, PyList},
+    wrap_pyfunction,
+};
 
 use qiskit_util::IndexMap;
 use rayon::prelude::*;
@@ -155,6 +159,7 @@ pub fn analyze_commutations(
     }
 }
 
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "analyze_commutations", signature = (py_dag, commutation_checker, approximation_degree=1.))]
 pub fn py_analyze_commutations(
@@ -220,6 +225,7 @@ pub fn py_analyze_commutations(
     Ok(out_dict.unbind())
 }
 
+#[cfg(feature = "py")]
 pub fn commutation_analysis_mod(m: &Bound<PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(py_analyze_commutations))?;
     Ok(())

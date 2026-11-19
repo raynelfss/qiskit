@@ -25,6 +25,7 @@ use qiskit_circuit::operations::{
 use qiskit_circuit::{BlocksMode, Qubit, VarsMode};
 use qiskit_quantum_info::sparse_observable::BitTerm;
 
+#[cfg(feature = "py")]
 use crate::TranspilerError;
 
 type GateToPauliRotType = (&'static [(&'static [BitTerm], f64, &'static [u32])], f64);
@@ -466,6 +467,7 @@ fn generate_pauli_product_rotation_gate(paulis: &[BitTerm], angle: Param) -> Pau
 /// and a global phase, as well as `PauliProductMeasurement` instructions.
 /// Raises a `TranspilerError`: if the circuit contains instructions not supported by
 /// the pass.
+#[cfg(feature = "py")]
 #[pyfunction]
 #[pyo3(name = "convert_to_pauli_rotations")]
 fn py_convert_to_pauli_rotations(py_dag: &PyDAGCircuit) -> PyResult<PyDAGCircuit> {
